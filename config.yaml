@@ -1,0 +1,30 @@
+# btc-signal-bot config. All secrets (Telegram token/chat id) come from
+# env vars (see .env.example), never from this file.
+
+account:
+  starting_equity_usd: 100000  # Propr 1-Step Classic challenge size
+
+risk:
+  risk_pct: 0.0075        # 0.75% per trade, within spec's 0.5-1.0% band
+  btc_sz_decimals: 5      # BTC-PERP quantity step on Hyperliquid; prefer live meta lookup
+  circuit_breaker_halt_pct: -0.025  # -2.5%, DO NOT WIDEN (see risk/circuit_breaker.py)
+
+strategy:
+  fisher_period: 9
+  obv_sma_period: 20
+  fractal_width: 2
+  sr_lookback: 20
+  min_reward_risk: 2.0
+
+data:
+  coin: BTC
+  bias_interval: "4h"
+  trigger_interval: "1h"
+
+telegram:
+  bot_token_env: BTC_SIGNAL_BOT_TELEGRAM_TOKEN
+  chat_id_env: BTC_SIGNAL_BOT_TELEGRAM_CHAT_ID
+  heartbeat_interval_hours: 4
+
+feature_flags:
+  execution_enabled: false  # Stage 1 hard-off; Stage 2 will flip this on
