@@ -1,14 +1,16 @@
 # RESEARCH REPORT & BUILD SPECIFICATION
 ## BTC-PERP Signal Bot — Propr.xyz Challenge, Stage 1 (Signal-Only)
 
-*(Source build brief, preserved verbatim as received. See README.md and the
-other docs/ files for the executed research findings, strategy rules,
-and implementation that resulted from this spec.)*
+*(Source build brief, preserved verbatim as received — Revision 2. See
+README.md and the other docs/ files for the scaffold that resulted from
+this spec.)*
 
-**Document status:** Self-contained build brief. The session executing this
-document has NO prior context. Everything needed is in this file. Where a
-fact must be researched rather than assumed, this document says so
-explicitly — do not fill gaps with plausible guesses.
+**Document status:** Self-contained build brief. The session executing
+this document has NO prior context. Everything needed is in this file.
+Where a fact must be researched rather than assumed, this document says
+so explicitly — do not fill gaps with plausible guesses.
+
+**Revision 2 — Section 3 research completed and cited (6 July 2026).**
 
 ## 1. Mission & Role
 
@@ -43,44 +45,131 @@ with these parameters:
 | Execution venue | Hyperliquid perps (via Propr's API) |
 | Prohibited | HFT, martingale, grid strategies |
 
-Both loss limits are equity-based (they include floating P&L) and breach on
-a single touch. The strategy's own risk controls (Section 6–7) are
+Both loss limits are equity-based (they include floating P&L) and breach
+on a single touch. The strategy's own risk controls (Section 6–7) are
 deliberately tighter than these limits.
 
-## 3. Required Research (complete BEFORE writing strategy code)
+## 3. Research Findings (COMPLETED — verify links resolve, then build)
 
-Produce a "Research Findings" section with cited source URLs for each item.
-If a fact cannot be verified, write "ASSUMPTION — needs manual
-confirmation" next to it. Never present an unverified guess as fact.
+Research conducted 6 July 2026. The build session must spot-check that
+the cited sources still say what is claimed before relying on them; any
+drift goes in "Open Items." Items marked ASSUMPTION still need
+confirmation.
 
-### 3.1 Propr API / SDK
-Locate Propr's current developer documentation. Confirm and cite:
-authentication method, order placement endpoints, position and
-account/equity query endpoints, rate limits, and whether an official
-Python SDK exists. Stage 1 places no orders, but the repo's (empty)
-execution module interface must match the real API's shape — so the
-research must be done now, not deferred. If any part of the API
-documentation is unavailable or ambiguous, STOP on that item and list it
-under "Needs manual confirmation from user."
+### 3.1 Propr API / SDK — VERIFIED (primary source)
 
-### 3.2 Fisher Transform (1H entry trigger)
-Confirm the standard Fisher Transform formula (Ehlers) and the commonly
-used default lookback period, with citations. Define precisely what
-"bullish cross" and "bearish cross" mean (Fisher line vs. trigger/signal
-line). Do not invent parameter values.
+**Source:** official docs repository `github.com/XBorgLabs/propr-docs`
+(files: `docs/api.md`, `docs/quickstart.md`, `docs/websocket.md`,
+`python/propr_sdk.py`). Clone it and read these files directly at build
+time — they are the primary source.
 
-### 3.3 On-Balance Volume (1H confirmation)
-Confirm the standard OBV formula with citation. Define the confirmation
-rule precisely (research common practice, cite, choose one, justify).
+| Item | Finding |
+|---|---|
+| Base URL (REST) | `https://api.propr.xyz/v1` (beta: `api.beta.propr.xyz/v1`) |
+| Base URL (WS) | `wss://api.propr.xyz/ws` (connect with `X-API-Key` header; server pings every 20s) |
+| Authentication | API key generated in app (format `pk_live_...`), sent as `X-API-Key` header on all authenticated requests |
+| Rate limit | 1,200 requests/min |
+| Account discovery | `GET /challenge-attempts?status=active` → `accountId`; all trading endpoints are under `/accounts/{accountId}/...` |
+| Orders | `POST /accounts/{accountId}/orders` (batch array; 201 on create). Order types include `market`, `limit`, `stop_market`, `take_profit_market`; `timeInForce` includes `IOC`/`GTC`; closing uses `reduceOnly`/`closePosition` |
+| Positions | `GET /accounts/{accountId}/positions` |
+| Account / equity | `GET /accounts/{accountId}` → `balance`, `availableBalance`, `totalUnrealizedPnl`, `marginBalance`, margin fields, `highWaterMark`. **Equity = balance + totalUnrealizedPnl + isolatedPositionMargin** (per SDK docstring) |
+| WS events | `account.updated`, `order.filled`, `position.updated` (and others; see `docs/websocket.md`) |
+| Python SDK | Yes — `python/propr_sdk.py` in the repo; designed to be copied into the project, not pip-installed |
+| OpenAPI spec | Referenced at the end of `docs/api.md` |
 
-### 3.4 Market data feed
-Default decision: Hyperliquid's public market-data API for BTC-PERP OHLCV
-(1H and 4H candles), since it is the execution venue.
+**Consequence for Stage 1:** shape `execution/propr_stub.py` method
+signatures to match the SDK's (`setup()`, `get_account()`,
+`create_order(...)`, `get_open_positions()`, `close_position()`), so
+Stage 2 swaps the stub for the real SDK with no interface change.
+
+### 3.2 Fisher Transform — VERIFIED
+
+**Primary source:** J.F. Ehlers, *Using the Fisher Transform*, Technical
+Analysis of Stocks & Commodities Vol. 20 —
+https://www.mesasoftware.com/papers/UsingTheFisherTransform.pdf
+
+- Core transform: `Fisher(x) = 0.5 * ln((1 + x) / (1 - x))`, applied to
+  price normalized into −1…+1 over a rolling min/max channel.
+- Ehlers' own construction normalizes over a **10-bar channel** with EMA
+  smoothing (alpha ≈ 0.33) before the transform.
+- Common platform defaults are period 9 or 10 (e.g. period 9:
+  https://forexbee.co/ehler-fisher-transform/ ; period 10:
+  https://library.tradingtechnologies.com/trade/chrt-ti-ehler-fisher-transformation.html ).
+- **Trigger line** = the Fisher line delayed one bar (`Fisher[t-1]`); this
+  smoothing/trigger construction is described at
+  https://coinpedia.org/traders/what-is-ehler-fisher-transform/ .
+- **Bullish cross:** Fisher crosses above trigger (strongest per
+  literature when occurring after a trough / from negative territory);
+  bearish cross is the mirror.
+
+**Decision: period = 10** (matches Ehlers' primary paper — primary source
+beats platform convention; this **supersedes Revision 1's period = 9**).
+
+**Implementation note (standard, uncited):** clamp normalized x to
+±0.999 before `ln()` to avoid singularity at ±1 — flag in code comments.
+
+### 3.3 On-Balance Volume — VERIFIED
+
+**Sources:** Wikipedia (formula): https://en.wikipedia.org/wiki/On-balance_volume ;
+StockCharts ChartSchool (interpretation):
+https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/on-balance-volume-obv
+
+- Formula (Granville, 1963): running total. If close > prior close:
+  OBV += volume. If close < prior close: OBV −= volume. If equal:
+  unchanged.
+- The absolute OBV value is meaningless (depends on series start); only
+  the line's direction/trend matters — both sources agree.
+- Literature does not fix one canonical confirmation rule; common
+  practice is OBV trend/slope assessment, often with an MA overlay.
+
+**Decision: confirmation = OBV above its 20-period SMA AND OBV rising
+vs. the prior bar** (falling/below for shorts).
+
+**ASSUMPTION — needs manual confirmation:** the 20-period SMA length is
+a common convention, not a cited standard. Make it configurable
+(`obv_sma_period`) and confirm with the user.
+
+### 3.4 Market data feed — VERIFIED (Hyperliquid public API)
+
+**Sources:** Hyperliquid official docs
+(https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint ,
+.../rate-limits-and-user-limits); endpoint reference with schema:
+https://docs.chainstack.com/reference/hyperliquid-info-candle-snapshot
+
+- **Endpoint:** `POST https://api.hyperliquid.xyz/info` with body
+  `{"type":"candleSnapshot","req":{"coin":"BTC","interval":"1h","startTime":<ms>,"endTime":<ms>}}`.
+  No auth, no key.
+- Intervals include `1h` and `4h`. Response: array of
+  `{t, T, o, h, l, c, v, n, s, i}` (open time, close time, OHLC as
+  strings, volume, trade count). **Only the most recent 5,000 candles per
+  interval are available** — ample for 10-bar Fisher and 4H swing
+  structure.
+- Rate limits are IP-weighted; `candleSnapshot` carries extra weight per
+  60 candles returned — request only the lookback needed (e.g. 300
+  bars), not the max.
+- **Live updates:** WS `wss://api.hyperliquid.xyz/ws` offers candle
+  subscriptions; acceptable Stage 1 alternative is REST polling ~30s
+  after each candle close (simpler, well within limits).
+- **BTC-PERP quantity step:** per-asset `szDecimals` comes from the
+  `{"type":"meta"}` info request. **Do not hardcode** — query meta at
+  startup and derive the step. (ASSUMPTION removed by making it a
+  runtime lookup.)
+
+### 3.5 Consolidated open items (carry into build output)
+
+1. `obv_sma_period = 20` — convention, confirm with user.
+2. Fisher period 10 chosen over 9 — primary-source rationale given;
+   confirm user is happy.
+3. Alert message formats (Section 8) — confirm before locking.
+4. Propr-side check: confirm the $100K 1-Step Classic tier's exact
+   drawdown/daily-loss percentages against `GET /challenges` (no auth)
+   when the account is purchased — Section 2 figures are the user's
+   stated parameters.
 
 ## 4. Strategy Specification
 
-Multi-timeframe confluence system. A trade signal exists only when the 1H
-trigger agrees with the 4H structural bias. No counter-trend signals.
+Multi-timeframe confluence system. A trade signal exists only when the
+1H trigger agrees with the 4H structural bias. No counter-trend signals.
 
 ### 4.1 4H structural bias (context layer)
 Fibonacci retracement/extension levels from the most recent completed
@@ -105,8 +194,8 @@ Every signal must carry, at generation time:
   extension; minimum reward:risk of 2:1 — signals failing 2:1 are
   suppressed and logged.
 - **Exit alerts (Stage 1):** the bot tracks its own open hypothetical
-  positions and posts an exit alert when stop or target is touched by live
-  price.
+  positions and posts an exit alert when stop or target is touched by
+  live price.
 
 ### 4.4 Pseudocode first
 Write the full entry/exit decision tree as commented pseudocode and get it
@@ -152,7 +241,8 @@ btc-signal-bot/
 │   ├── telegram.py          # NEW bot instance client
 │   └── formats.py           # alert message templates
 ├── execution/
-│   └── propr_stub.py        # interface only — raises NotImplementedError
+│   └── propr_stub.py        # interface only — raises NotImplementedError,
+│                             # signatures shaped by Section 3.1 research
 ├── ledger/
 │   └── tracker.py           # hypothetical open positions, exits, daily P&L
 └── main.py                  # scheduler loop (1H/4H candle-close driven)
@@ -210,7 +300,7 @@ Manual Confirmation.
 
 ## 12. Acceptance Criteria (Stage 1 is done when)
 
-- [ ] Research Findings section complete, every claim cited or flagged
+- [ ] Section 3 citations spot-checked at build time; drift documented
 - [ ] Bot runs continuously, evaluates on 1H/4H candle closes
 - [ ] Signals fire only on 4H+1H confluence with R:R ≥ 2:1
 - [ ] Sizing, circuit breaker, and ledger verified with unit tests against
@@ -229,3 +319,8 @@ line-for-line out of, Bullphoric's alert formatting code. It may follow a
 broadly similar structural pattern (emoji header, labeled fields) purely
 because that is a reasonable general format for a Telegram trading alert,
 not because of code sharing.
+
+This repo was intentionally reduced to a **scaffold** (structure,
+signatures, docstrings, TODOs, and a failing test suite as the
+acceptance contract) for a separate build session (Fable) to implement
+against. See README.md.

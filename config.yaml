@@ -10,7 +10,7 @@ risk:
   circuit_breaker_halt_pct: -0.025  # -2.5%, DO NOT WIDEN (see risk/circuit_breaker.py)
 
 strategy:
-  fisher_period: 9
+  fisher_period: 10       # Ehlers' primary-source default (Rev. 2 research); supersedes the platform-convention 9
   obv_sma_period: 20
   fractal_width: 2
   sr_lookback: 20

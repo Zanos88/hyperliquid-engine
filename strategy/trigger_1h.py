@@ -13,7 +13,7 @@ from typing import Sequence
 
 from data.feed import Candle
 
-FISHER_PERIOD = 9          # Ehlers' original default, cited in RESEARCH_FINDINGS 3.2
+FISHER_PERIOD = 10         # Ehlers' primary-source default (Rev. 2), cited in RESEARCH_FINDINGS 3.2
 OBV_SMA_PERIOD = 20         # this repo's default; flagged as an assumption in 3.3
 
 

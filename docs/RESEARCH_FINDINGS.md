@@ -1,156 +1,155 @@
-# Research Findings
+# Research Findings (Revision 2 — completed 6 July 2026)
 
-All items below are cited to a live source as of 2026-07-06. Anything that
-could not be verified from public documentation is explicitly flagged as
-an assumption — none of it is used as a hard fact elsewhere in this repo.
+This supersedes the Revision 1 findings doc. Research conducted 6 July
+2026; **the build session must spot-check that every cited source still
+says what is claimed here before relying on it** — any drift goes in the
+Open Items list below, not silently patched over.
 
-## 3.1 Propr API / SDK
+## 3.1 Propr API / SDK — VERIFIED (primary source)
 
-**Source:** [Propr Developers](https://www.propr.xyz/developers), backed by
-the public docs repo [github.com/XBorgLabs/propr-docs](https://github.com/XBorgLabs/propr-docs)
-(`docs/api.md`), and the live OpenAPI spec at
-[propr.xyz/openapi.json](https://propr.xyz/openapi.json).
+**Source:** official docs repository `github.com/XBorgLabs/propr-docs`
+(files: `docs/api.md`, `docs/quickstart.md`, `docs/websocket.md`,
+`python/propr_sdk.py`). **Clone it and read these files directly at build
+time** — they are the primary source; this table is a summary, not a
+substitute for reading them.
 
-- **Base URL (live):** `https://api.propr.xyz/v1/`
-- **Auth:** `X-API-Key` HTTP header, key format `pk_live_...`, generated
-  from Settings at `app.propr.xyz`. Optional `X-Builder-Code` header
-  (`builder_...`) for usage attribution — not required.
-- **Rate limit:** 1,200 requests/min per API key (all authenticated
-  endpoints share this budget).
-- **Official SDK:** Yes — but distributed as source, not packaged.
-  - Python: `python/propr_sdk.py` in the docs repo (copy-in module, not a
-    PyPI package). Runtime deps: `requests`, `python-ulid`, `websockets`,
-    `python-dotenv`.
-  - JS/TS: `javascript/propr-sdk.ts`, requires `ulid`.
-- **Order placement:** `POST /accounts/{accountId}/orders` — body includes
-  `intentId` (client-generated ULID for idempotency), `asset`, `quantity`,
-  `side`, `type`, `positionSide`. `GET` same path lists/filters orders.
-  Cancel: `POST /accounts/{accountId}/orders/{orderId}/cancel`.
-- **Position query:** `GET /accounts/{accountId}/positions` — returns
-  `positionId`, `quantity`, `entryPrice`, `unrealizedPnl`,
-  `liquidationPrice`, `leverage`, `notionalValue`, `marginUsed`,
-  `realizedPnl`.
-- **Account/equity query:** **ASSUMPTION — needs manual confirmation.**
-  Neither `docs/api.md` nor the OpenAPI spec expose a dedicated
-  account-equity or balance endpoint. The closest available data is
-  position-level (`notionalValue`, `marginUsed`, `unrealizedPnl`,
-  `realizedPnl`) and challenge-attempt endpoints
-  (`GET /challenge-attempts/{attemptId}`), which may carry a starting/
-  current balance field not visible in the fetched docs excerpt. Before
-  Stage 2 wires up any equity-dependent logic against the real account,
-  confirm directly with Propr (support/Discord) which endpoint returns
-  live total equity, or inspect the full `openapi.json` response schema
-  for `challenge-attempts` and any `/accounts/{accountId}` (non-suffixed)
-  path.
-- **WebSocket:** mentioned as available (e.g. a `position.updated` event)
-  but no endpoint URL or message schema was found in the fetched docs.
-  **ASSUMPTION — needs manual confirmation** if Stage 2 wants
-  push-based position updates instead of polling.
-- Other endpoints found, not needed for Stage 1: `GET /users/me`,
-  `GET /accounts/{accountId}/trades`,
-  `GET/PUT /accounts/{accountId}/margin-config/...`,
-  `GET /challenges`, `GET /challenge-attempts[/​{id}]`,
-  `GET /leverage-limits/effective`, `GET /health[/services]`.
+| Item | Finding |
+|---|---|
+| Base URL (REST) | `https://api.propr.xyz/v1` (beta: `api.beta.propr.xyz/v1`) |
+| Base URL (WS) | `wss://api.propr.xyz/ws` (connect with `X-API-Key` header; server pings every 20s) |
+| Authentication | API key generated in app (format `pk_live_...`), sent as `X-API-Key` header on all authenticated requests |
+| Rate limit | 1,200 requests/min |
+| Account discovery | `GET /challenge-attempts?status=active` → `accountId`; all trading endpoints are under `/accounts/{accountId}/...` |
+| Orders | `POST /accounts/{accountId}/orders` (batch array; 201 on create). Order types: `market`, `limit`, `stop_market`, `take_profit_market`; `timeInForce`: `IOC`/`GTC`; closing uses `reduceOnly`/`closePosition` |
+| Positions | `GET /accounts/{accountId}/positions` |
+| **Account / equity** | `GET /accounts/{accountId}` → `balance`, `availableBalance`, `totalUnrealizedPnl`, `marginBalance`, margin fields, `highWaterMark`. **Equity = balance + totalUnrealizedPnl + isolatedPositionMargin** (per SDK docstring). This resolves Revision 1's "no equity endpoint found" gap. |
+| WS events | `account.updated`, `order.filled`, `position.updated` (and others; see `docs/websocket.md`) |
+| Python SDK | Yes — `python/propr_sdk.py` in the repo; **designed to be copied into the project, not pip-installed** |
+| OpenAPI spec | Referenced at the end of `docs/api.md` |
 
-This repo's `execution/propr_stub.py` (Section 7) shapes its method
-signatures around the confirmed order/position endpoints above and marks
-the equity lookup as an open TODO pending the confirmation above.
+**Consequence for Stage 1 scaffold:** `execution/propr_stub.py` method
+names/signatures should match the SDK's — `setup()`, `get_account()`,
+`create_order(...)`, `get_open_positions()`, `close_position()` — so
+Stage 2 can swap the stub for the real SDK with no interface change.
+(The scaffold in this repo currently uses `place_order` /
+`cancel_order` / `get_positions` / `get_equity` naming from Revision 1;
+**rename to match the SDK's naming above during implementation.**)
 
-## 3.2 Fisher Transform (1H entry trigger)
+## 3.2 Fisher Transform — VERIFIED
 
-**Source:** [TradingView — Fisher Transform](https://www.tradingview.com/support/solutions/43000589141-fisher-transform/),
-[ForexBee — Ehler Fisher Transform Guide](https://forexbee.co/ehler-fisher-transform/),
-original method by John Ehlers ("Using the Fisher Transform", *Stocks &
-Commodities*, 2002).
+**Primary source:** J.F. Ehlers, *Using the Fisher Transform*, Technical
+Analysis of Stocks & Commodities Vol. 20 —
+https://www.mesasoftware.com/papers/UsingTheFisherTransform.pdf
 
-- **Formula:**
-  1. Normalize price into `[-1, 1]` over a lookback window `N` (default
-     **9** in Ehlers' original publication and TradingView's reference
-     implementation; ForexBee also cites 9 as the common default, with 10
-     seen in some platform ports):
-     `x = 2 * ((price - min(N)) / (max(N) - min(N)) - 0.5)`, clamped to
-     `[-0.999, 0.999]` and smoothed with a small EMA factor (Ehlers uses
-     `x = 0.33 * 2 * (...) + 0.67 * x_prev`) to avoid the `ln` blowing up
-     near the bounds.
-  2. Fisher Transform: `Fisher = 0.5 * ln((1 + x) / (1 - x)) + 0.5 * Fisher_prev`.
-  3. **Trigger/signal line** = Fisher value from **one bar prior**
-     (`Fisher[t-1]`), i.e. the Fisher line lagged by 1 — this is the
-     standard construction, not a separately-computed indicator.
-- **Chosen parameter:** `N = 9` (Ehlers' original default; most
-  conservative and most widely cited — TradingView's built-in script and
-  ForexBee both default here, avoiding an unsourced deviation).
-- **Bullish cross:** `Fisher[t-1] <= Trigger[t-1]` and `Fisher[t] > Trigger[t]`
-  — i.e. Fisher line crosses **above** its own prior-bar value.
-- **Bearish cross:** `Fisher[t-1] >= Trigger[t-1]` and `Fisher[t] < Trigger[t]`
-  — Fisher line crosses **below** its own prior-bar value.
+- Core transform: `Fisher(x) = 0.5 * ln((1 + x) / (1 - x))`, applied to
+  price normalized into −1…+1 over a rolling min/max channel.
+- Ehlers' own construction normalizes over a **10-bar channel** with EMA
+  smoothing (alpha ≈ 0.33) before the transform.
+- Common platform defaults are period 9 or 10 (period 9:
+  https://forexbee.co/ehler-fisher-transform/ ; period 10:
+  https://library.tradingtechnologies.com/trade/chrt-ti-ehler-fisher-transformation.html).
+- **Trigger line** = the Fisher line delayed one bar (`Fisher[t-1]`);
+  described at https://coinpedia.org/traders/what-is-ehler-fisher-transform/.
+- **Bullish cross:** Fisher crosses above trigger (strongest per
+  literature when occurring after a trough / from negative territory);
+  bearish cross is the mirror.
 
-## 3.3 On-Balance Volume (1H confirmation)
+**Decision: period = 10** — matches Ehlers' primary paper; primary source
+takes precedence over platform convention. **This supersedes Revision 1's
+period = 9**, which had defaulted to the more commonly-seen platform
+value rather than the original paper.
 
-**Source:** [Wikipedia — On-balance volume](https://en.wikipedia.org/wiki/On-balance_volume),
-[StockCharts ChartSchool — OBV](https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/on-balance-volume-obv),
-[Fidelity — OBV](https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/obv).
-Originated by Joseph Granville, *Granville's New Key to Stock Market
-Profits* (1963).
+**Implementation note (standard, uncited):** clamp normalized x to
+±0.999 before `ln()` to avoid a singularity at ±1 — flag this in code
+comments as a numerical-stability guard, not a strategy parameter.
 
-- **Formula:**
-  - if `close[t] > close[t-1]`: `OBV[t] = OBV[t-1] + volume[t]`
-  - if `close[t] < close[t-1]`: `OBV[t] = OBV[t-1] - volume[t]`
-  - if `close[t] == close[t-1]`: `OBV[t] = OBV[t-1]`
-- **Confirmation rule (chosen):** OBV above its own N-bar simple moving
-  average, with the OBV also having risen over the last bar
-  (`OBV[t] > OBV_SMA(N)[t]` and `OBV[t] > OBV[t-1]`) for a "rising"
-  confirmation (mirror with `<` for "falling"). StockCharts' ChartSchool
-  explicitly documents overlaying a moving average on OBV as the standard
-  way chartists smooth it for trend confirmation — this is more robust
-  than a bare single-bar OBV delta, which is noisy on an hourly chart.
-  Default `N = 20` (20 hourly bars ≈ same order of magnitude as the
-  Fisher lookback's timeframe context; configurable in `config.yaml`).
-  **ASSUMPTION flag:** the specific N=20 window is this repo's choice, not
-  a value found in a cited source — StockCharts does not prescribe a
-  fixed period for the OBV moving average. Treat as a tunable default, not
-  a verified constant.
+## 3.3 On-Balance Volume — VERIFIED
 
-## 3.4 Market data feed
+**Sources:** Wikipedia (formula):
+https://en.wikipedia.org/wiki/On-balance_volume ; StockCharts ChartSchool
+(interpretation):
+https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/on-balance-volume-obv
 
-**Source:** [Hyperliquid Docs — Info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint),
-[Hyperliquid Docs — Tick and lot size](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size).
+- Formula (Granville, 1963): running total. `close > prior close` →
+  `OBV += volume`; `close < prior close` → `OBV -= volume`; equal →
+  unchanged.
+- The absolute OBV value is meaningless (depends on series start) — only
+  the line's direction/trend matters; both sources agree on this.
+- Literature does not fix one canonical confirmation rule; common
+  practice is OBV trend/slope assessment, often with an MA overlay.
 
-- **Endpoint:** `POST https://api.hyperliquid.xyz/info`, header
-  `Content-Type: application/json`, body:
-  ```json
-  {"type": "candleSnapshot", "req": {"coin": "BTC", "interval": "1h", "startTime": <ms>, "endTime": <ms>}}
-  ```
-  Supported intervals include `1h` and `4h` (both needed here). Response
-  is an array of `{T, t, o, h, l, c, v, n, s, i}` objects (`t`/`T` = open/
-  close time ms, `o/h/l/c` = OHLC strings, `v` = volume, `n` = trade
-  count). Only the most recent 5,000 candles per request are returned —
-  sufficient for the swing-detection lookback windows used here.
-- **Rate limit:** not explicitly published for the public `/info` REST
-  endpoint in the fetched docs (a per-user weight-based limit exists for
-  authenticated/exchange actions, exposed via a `userRateLimit` query, but
-  that governs order actions, not public info reads). **ASSUMPTION —
-  needs manual confirmation** if polling frequency needs tightening beyond
-  the conservative interval this repo uses (candle-close driven, i.e. at
-  most one call per open symbol per closed 1H/4H candle — far below any
-  plausible throttle).
-- **BTC-PERP quantity step:** Hyperliquid's perpetuals metadata
-  (`szDecimals` field from the `meta` info request) reports **`szDecimals
-  = 5`** for BTC, i.e. a minimum size increment of **0.00001 BTC**. This
-  repo's `risk/sizing.py` truncates down to this step by default but
-  treats it as configurable (`btc_sz_decimals` in `config.yaml`) since the
-  value should be re-verified against the live `meta` response, not
-  hardcoded permanently — Hyperliquid can change per-asset metadata.
+**Decision: confirmation = OBV above its 20-period SMA AND OBV rising vs.
+the prior bar** (mirrored — below/falling — for shorts).
 
-## Needs manual confirmation from user (consolidated)
+**ASSUMPTION — needs manual confirmation:** the 20-period SMA length is a
+common convention, not a value drawn from either cited source. Kept
+configurable (`obv_sma_period`); confirm with the user before treating it
+as final.
 
-1. **Propr account/equity endpoint** — not found in public docs; needed
-   before Stage 2 execution work starts (Stage 1 does not call it).
-2. **Propr WebSocket schema** — mentioned but undocumented in what was
-   fetched; only matters for Stage 2 push-based updates.
-3. **OBV moving-average window (N=20)** — this repo's own reasonable
-   default, not a value drawn from a cited source. Revisit after any
-   forward-testing.
-4. **Hyperliquid `/info` rate limit for public reads** — not explicitly
-   published; current candle-close-driven polling cadence is
-   conservative, but should be confirmed if the call frequency ever
-   increases (e.g. adding more symbols).
+## 3.4 Market data feed — VERIFIED (Hyperliquid public API)
+
+**Sources:** Hyperliquid official docs
+(https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint,
+.../rate-limits-and-user-limits); endpoint reference with schema:
+https://docs.chainstack.com/reference/hyperliquid-info-candle-snapshot
+
+- **Endpoint:** `POST https://api.hyperliquid.xyz/info`, body
+  `{"type":"candleSnapshot","req":{"coin":"BTC","interval":"1h","startTime":<ms>,"endTime":<ms>}}`.
+  No auth, no key required.
+- Intervals include `1h` and `4h`. Response: array of
+  `{t, T, o, h, l, c, v, n, s, i}` (open time, close time, OHLC as
+  strings, volume, trade count). **Only the most recent 5,000 candles per
+  interval are available** — ample for a 10-bar Fisher lookback and 4H
+  swing structure.
+- Rate limits are **IP-weighted**; `candleSnapshot` carries extra weight
+  per 60 candles returned — request only the lookback actually needed
+  (e.g. 300 bars), not the max available.
+- **Live updates:** WS `wss://api.hyperliquid.xyz/ws` offers candle
+  subscriptions. An acceptable Stage 1 alternative is REST polling ~30
+  seconds after each expected candle close (simpler, well within rate
+  limits) — this is what the scaffold's `main.py` assumes.
+- **BTC-PERP quantity step:** per-asset `szDecimals` comes from the
+  `{"type":"meta"}` info request. **Do not hardcode** — query `meta` at
+  startup and derive the step live. This removes Revision 1's
+  hardcoded-default caveat entirely; `DEFAULT_BTC_SZ_DECIMALS = 5` in
+  `risk/sizing.py` should only ever be a fallback value used if the live
+  lookup fails (and that failure must be logged as a WARNING, never
+  silent).
+
+## Consolidated Open Items / Needs Manual Confirmation
+
+1. **`obv_sma_period = 20`** — a common convention, not a value drawn
+   from a cited source. Confirm with the user before locking it in.
+2. **Fisher period 10 (not 9)** — chosen on primary-source grounds
+   (Ehlers' original paper) over the more common platform default of 9.
+   Confirm the user is happy with this choice; it changes signal timing
+   versus a period-9 implementation.
+3. **Alert message formats** (build spec section 8) — confirm exact
+   wording/layout with the user before locking `alerts/formats.py`.
+4. **Propr challenge tier parameters** — confirm the $100K 1-Step
+   Classic tier's exact drawdown/daily-loss percentages against
+   `GET /challenges` (no auth required) once the account is purchased.
+   Section 2 of the build spec states the user's own stated parameters,
+   not a value independently verified against Propr's API.
+5. **Propr execution method naming** — this scaffold's
+   `execution/propr_stub.py` currently uses placeholder method names from
+   Revision 1 (`place_order`, `cancel_order`, `get_positions`,
+   `get_equity`). Rename to match the verified SDK's `create_order`,
+   `get_open_positions`, `close_position`, `get_account`, `setup` during
+   implementation so Stage 2 is a true drop-in.
+6. **Propr WebSocket message schemas** — endpoint and event names
+   (`account.updated`, `order.filled`, `position.updated`) are confirmed,
+   but exact payload schemas are only in `docs/websocket.md` in the
+   `propr-docs` repo — read that file directly at implementation time
+   rather than relying on this summary.
+
+## Superseded from Revision 1
+
+- Fisher period: was 9 (platform-convention default), now **10**
+  (primary-source default) — see 3.2.
+- Propr account/equity endpoint: was flagged as **not found**, now
+  **confirmed** (`GET /accounts/{accountId}`, equity formula above) — see
+  3.1.
+- BTC szDecimals: was cited as a fixed default (5) with a runtime-lookup
+  recommendation; now confirmed as **must be a runtime lookup**, not
+  optional — see 3.4.
