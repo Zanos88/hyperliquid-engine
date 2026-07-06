@@ -1,28 +1,21 @@
-# btc-signal-bot — Stage 1 (Signal-Only) — SCAFFOLD
-
-**This repo is a scaffold, not a finished bot.** Repo structure, module
-boundaries, function signatures, config, docs, and the unit-test suite
-(the contract each module must satisfy) are in place. The function bodies
-in `strategy/`, `data/`, `risk/`, `ledger/`, `alerts/`, and `main.py` are
-`raise NotImplementedError` stubs with `TODO(Fable)` docstrings — this is
-intentional, handed off for a separate build session (Fable) to implement.
-Running `python -m pytest -q` right now fails on every test; that is
-expected and is the acceptance bar for the implementation pass, not a bug
-in the scaffold.
+# btc-signal-bot — Stage 1 (Signal-Only)
 
 BTC-PERP multi-timeframe confluence signal bot for a future Propr.xyz
-1-Step Classic challenge account. **This is Stage 1: once implemented, it
-posts Telegram alerts only — it must never gain a code path capable of
-placing an order** (`execution/propr_stub.py` raises `NotImplementedError`
-unconditionally, by design, permanently for Stage 1).
+1-Step Classic challenge account. **This is Stage 1: it posts Telegram
+alerts only — there is no code path capable of placing an order**
+(`execution/propr_stub.py` raises `NotImplementedError` unconditionally,
+by design, permanently for Stage 1).
 
-Built from [`btc-signal-bot-build-spec.md`](btc-signal-bot-build-spec.md) —
-read that file in full before implementing anything. See
-[`docs/RESEARCH_FINDINGS.md`](docs/RESEARCH_FINDINGS.md) for every cited
-source behind the API/indicator choices below (do not re-derive or
-second-guess these — cite further only if extending them), and
-[`docs/STRATEGY_PSEUDOCODE.md`](docs/STRATEGY_PSEUDOCODE.md) for the full
-decision tree each stub's TODO points back to.
+Implemented 2026-07-07 against the scaffold's 18-test acceptance contract
+(all passing) and deployed live to Railway — see "Live deployment" below.
+
+Built from [`btc-signal-bot-build-spec.md`](btc-signal-bot-build-spec.md).
+See [`docs/RESEARCH_FINDINGS.md`](docs/RESEARCH_FINDINGS.md) for every
+cited source behind the API/indicator choices (Fisher period 10 per
+Ehlers' primary paper, OBV + 20-SMA confirmation, Hyperliquid
+candleSnapshot feed), and
+[`docs/STRATEGY_PSEUDOCODE.md`](docs/STRATEGY_PSEUDOCODE.md) for the
+decision tree the code implements.
 
 **This strategy is live and unvalidated — no backtest exists.** Parameters
 were chosen conservatively (cited defaults where they exist) but there is
@@ -74,6 +67,27 @@ tests/                  # pytest unit tests against synthetic data
 `execution/` — signals are plain data objects. This is what lets Stage 2
 bolt an execution layer on without touching strategy code.
 
+## Live deployment (Railway)
+
+Deployed 2026-07-07 as a Railway **worker** (see `Procfile`) in its own
+project — completely separate from Bullphoric's Railway service:
+
+- Project/service: `btc-signal-bot` (workspace: zanos88's Projects)
+- Env vars (service-scoped, isolated): `BTC_SIGNAL_BOT_TELEGRAM_TOKEN`,
+  `BTC_SIGNAL_BOT_TELEGRAM_CHAT_ID` (note: channel IDs need the `-100`
+  prefix — `-1004401790873`, not the bare ID BotFather-adjacent tools show)
+- Bot: @Tradingdeskincbot → channel "TradingDesk Inc (Propr)"
+- On boot the bot sends a startup heartbeat immediately, so a successful
+  deploy is visible in the channel within seconds
+
+Operate it with the Railway CLI from this directory:
+
+```bash
+railway logs --service btc-signal-bot    # read live logs ("alive:" lines = healthy)
+railway up --service btc-signal-bot --detach   # redeploy after changes
+# stop/restart/scale: Railway dashboard -> project btc-signal-bot
+```
+
 ## Running locally
 
 ```bash
@@ -118,11 +132,10 @@ python -m pytest -q
 ```
 
 18 tests covering `risk/sizing.py`, `risk/circuit_breaker.py`, and
-`ledger/tracker.py` against synthetic data (no live API calls). **These
-currently all fail** — they are the scaffold's acceptance contract for the
-implementation pass, not a broken state to "fix" by weakening the tests.
-Implement the corresponding modules until they pass; do not edit the
-tests to make them pass instead.
+`ledger/tracker.py` against synthetic data (no live API calls) — all
+passing as of the 2026-07-07 implementation pass. These are the
+acceptance contract: if a change breaks one, fix the module, not the
+test.
 
 ## Stage 2 integration notes (not built here)
 
