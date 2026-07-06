@@ -1,9 +1,9 @@
 """Daily circuit breaker per build spec section 6.
 
-SCAFFOLD ONLY — halts new signal generation at -2.5% daily P&L, a
-deliberate buffer inside the challenge's real 3% daily loss limit.
-HALT_THRESHOLD_PCT must stay a hard-coded constant, never read from
-config.yaml, so it cannot be casually widened (build spec sections 6/11).
+Halts new signal generation at -2.5% daily P&L — a deliberate buffer
+inside the challenge's real 3% daily loss limit. HALT_THRESHOLD_PCT is a
+hard-coded constant, deliberately NOT read from config.yaml, so it cannot
+be casually widened (build spec sections 6/11).
 """
 from __future__ import annotations
 
@@ -21,13 +21,22 @@ class CircuitBreaker:
     _just_tripped: bool = field(default=False, repr=False)
 
     def update(self, current_equity: float) -> None:
-        """TODO(Fable): recompute halt state from current (equity-inclusive)
-        daily P&L. Set self._just_tripped True only on the transition into
-        halted (not on every subsequent update while already halted) so
-        the caller sends exactly one HALT alert per breach.
-        Raise ValueError if day_start_equity <= 0.
+        """Recompute halt state from current (equity-inclusive) daily P&L.
+
+        `_just_tripped` is True only on the transition into halted so the
+        caller sends exactly one HALT alert per breach, not one per poll.
         """
-        raise NotImplementedError
+        if self.day_start_equity <= 0:
+            raise ValueError("day_start_equity must be positive")
+
+        daily_pnl_pct = (current_equity - self.day_start_equity) / self.day_start_equity
+        was_halted = self.halted
+
+        if daily_pnl_pct <= HALT_THRESHOLD_PCT and not self.halted:
+            self.halted = True
+            self.halt_reason = f"daily P&L {daily_pnl_pct:.4%} breached halt threshold {HALT_THRESHOLD_PCT:.2%}"
+
+        self._just_tripped = self.halted and not was_halted
 
     def just_tripped(self) -> bool:
         return self._just_tripped
@@ -36,11 +45,12 @@ class CircuitBreaker:
         return self.halted
 
     def reset_for_new_day(self, new_day_start_equity: float) -> None:
-        """TODO(Fable): reset day_start_equity, halted, halt_reason, _just_tripped."""
-        raise NotImplementedError
+        self.day_start_equity = new_day_start_equity
+        self.halted = False
+        self.halt_reason = None
+        self._just_tripped = False
 
 
 def is_new_utc_day(last_timestamp: datetime, now: datetime | None = None) -> bool:
-    """TODO(Fable): True if `now` (default utcnow) is on a later UTC calendar
-    date than `last_timestamp`."""
-    raise NotImplementedError
+    now = now or datetime.now(timezone.utc)
+    return now.date() > last_timestamp.date()
