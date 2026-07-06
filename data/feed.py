@@ -1,9 +1,11 @@
 """Hyperliquid public market-data feed (BTC-PERP OHLCV).
 
-Endpoint confirmed in docs/RESEARCH_FINDINGS.md section 3.4:
-POST https://api.hyperliquid.xyz/info, body {"type": "candleSnapshot", ...}.
-Only closed candles are ever returned to callers (see `fetch_candles`),
-per the build spec's "no intra-candle signal generation" requirement.
+SCAFFOLD ONLY — endpoint confirmed in docs/RESEARCH_FINDINGS.md section
+3.4: POST https://api.hyperliquid.xyz/info, body
+{"type": "candleSnapshot", "req": {"coin", "interval", "startTime", "endTime"}}.
+Implement so that callers never receive an in-progress (unclosed) candle —
+this is a hard requirement (build spec section 11: no intra-candle
+signal generation / no repainting).
 """
 from __future__ import annotations
 
@@ -25,18 +27,6 @@ class Candle:
     volume: float
 
 
-def _parse_candle(raw: dict) -> Candle:
-    return Candle(
-        open_time_ms=raw["t"],
-        close_time_ms=raw["T"],
-        open=float(raw["o"]),
-        high=float(raw["h"]),
-        low=float(raw["l"]),
-        close=float(raw["c"]),
-        volume=float(raw["v"]),
-    )
-
-
 def fetch_candles(
     coin: str,
     interval: str,
@@ -47,43 +37,30 @@ def fetch_candles(
 ) -> list[Candle]:
     """Fetch closed candles only.
 
-    The Hyperliquid candleSnapshot endpoint can include an in-progress
-    candle as the last element; we drop any candle whose close_time_ms is
-    in the future relative to end_time_ms to guarantee callers never see
-    an unclosed bar.
+    TODO(Fable): POST to HYPERLIQUID_INFO_URL with the candleSnapshot body,
+    parse the response into Candle objects, and drop any candle whose
+    close_time_ms is > end_time_ms (the API can return an in-progress
+    trailing candle). See docs/RESEARCH_FINDINGS.md 3.4 for the exact
+    request/response field names.
     """
-    body = {
-        "type": "candleSnapshot",
-        "req": {"coin": coin, "interval": interval, "startTime": start_time_ms, "endTime": end_time_ms},
-    }
-    http = session or requests.Session()
-    resp = http.post(HYPERLIQUID_INFO_URL, json=body, timeout=timeout)
-    resp.raise_for_status()
-    raw_candles = resp.json()
-
-    candles = [_parse_candle(c) for c in raw_candles]
-    candles = [c for c in candles if c.close_time_ms <= end_time_ms]
-    candles.sort(key=lambda c: c.open_time_ms)
-    return candles
+    raise NotImplementedError
 
 
 def fetch_meta(session: requests.Session | None = None, timeout: float = 10.0) -> dict:
-    """Fetch perpetuals metadata (asset universe, szDecimals, maxLeverage)."""
-    http = session or requests.Session()
-    resp = http.post(HYPERLIQUID_INFO_URL, json={"type": "meta"}, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    """Fetch perpetuals metadata (asset universe, szDecimals, maxLeverage).
+
+    TODO(Fable): POST {"type": "meta"} to HYPERLIQUID_INFO_URL.
+    """
+    raise NotImplementedError
 
 
 def get_btc_sz_decimals(session: requests.Session | None = None) -> int:
     """Live lookup of BTC's quantity-step precision (see RESEARCH_FINDINGS 3.4).
 
-    Falls back to the cited default of 5 only if the live lookup fails —
-    the failure is the caller's responsibility to log, per the project's
-    "no silent fallbacks" rule.
+    TODO(Fable): find the "BTC" entry in fetch_meta()'s universe list and
+    return its szDecimals (cited default is 5, but must be looked up live,
+    not hardcoded — Hyperliquid can change per-asset metadata). Log a
+    WARNING (never silently fall back) if the live lookup fails, per this
+    project's no-silent-fallback rule.
     """
-    meta = fetch_meta(session=session)
-    for asset in meta.get("universe", []):
-        if asset.get("name") == "BTC":
-            return int(asset["szDecimals"])
-    raise LookupError("BTC not found in Hyperliquid perpetuals meta universe")
+    raise NotImplementedError

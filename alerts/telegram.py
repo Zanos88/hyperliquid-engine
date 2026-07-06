@@ -1,10 +1,11 @@
 """Telegram delivery for a NEW, dedicated bot instance.
 
-Hard constraint (build spec section 8): this bot instance, its token, and
-its channel are entirely separate from the existing Bullphoric
-(ALON/TROLL/ANSEM) production bot. Env vars below are namespaced
-BTC_SIGNAL_BOT_* to avoid any accidental collision with Bullphoric's
-TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID if this ever runs on the same host.
+SCAFFOLD ONLY. Hard constraint (build spec section 8): this bot instance,
+its token, and its channel are entirely separate from the existing
+Bullphoric (ALON/TROLL/ANSEM) production bot. Env vars below are
+namespaced BTC_SIGNAL_BOT_* to avoid any accidental collision with
+Bullphoric's TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID if this ever runs on
+the same host.
 """
 from __future__ import annotations
 
@@ -33,11 +34,9 @@ class TelegramClient:
             )
 
     def send(self, text: str, timeout: float = 10.0) -> bool:
-        url = f"{TELEGRAM_API_BASE}/bot{self.bot_token}/sendMessage"
-        try:
-            resp = requests.post(url, json={"chat_id": self.chat_id, "text": text}, timeout=timeout)
-            resp.raise_for_status()
-            return True
-        except requests.RequestException:
-            logger.warning("Telegram send failed for chat_id=%s", self.chat_id, exc_info=True)
-            return False
+        """TODO(Fable): POST to {TELEGRAM_API_BASE}/bot{token}/sendMessage with
+        {"chat_id": self.chat_id, "text": text}. On failure, log a WARNING
+        (never a silent except: pass — this project's #1 recurring bug class)
+        and return False; return True on success.
+        """
+        raise NotImplementedError

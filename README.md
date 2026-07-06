@@ -1,15 +1,28 @@
-# btc-signal-bot — Stage 1 (Signal-Only)
+# btc-signal-bot — Stage 1 (Signal-Only) — SCAFFOLD
+
+**This repo is a scaffold, not a finished bot.** Repo structure, module
+boundaries, function signatures, config, docs, and the unit-test suite
+(the contract each module must satisfy) are in place. The function bodies
+in `strategy/`, `data/`, `risk/`, `ledger/`, `alerts/`, and `main.py` are
+`raise NotImplementedError` stubs with `TODO(Fable)` docstrings — this is
+intentional, handed off for a separate build session (Fable) to implement.
+Running `python -m pytest -q` right now fails on every test; that is
+expected and is the acceptance bar for the implementation pass, not a bug
+in the scaffold.
 
 BTC-PERP multi-timeframe confluence signal bot for a future Propr.xyz
-1-Step Classic challenge account. **This is Stage 1: it posts Telegram
-alerts only. It cannot place an order — there is no code path capable of
-it (`execution/propr_stub.py` raises `NotImplementedError` unconditionally).**
+1-Step Classic challenge account. **This is Stage 1: once implemented, it
+posts Telegram alerts only — it must never gain a code path capable of
+placing an order** (`execution/propr_stub.py` raises `NotImplementedError`
+unconditionally, by design, permanently for Stage 1).
 
-Built from [`btc-signal-bot-build-spec.md`](btc-signal-bot-build-spec.md).
-See [`docs/RESEARCH_FINDINGS.md`](docs/RESEARCH_FINDINGS.md) for every
-cited source behind the API/indicator choices below, and
+Built from [`btc-signal-bot-build-spec.md`](btc-signal-bot-build-spec.md) —
+read that file in full before implementing anything. See
+[`docs/RESEARCH_FINDINGS.md`](docs/RESEARCH_FINDINGS.md) for every cited
+source behind the API/indicator choices below (do not re-derive or
+second-guess these — cite further only if extending them), and
 [`docs/STRATEGY_PSEUDOCODE.md`](docs/STRATEGY_PSEUDOCODE.md) for the full
-decision tree.
+decision tree each stub's TODO points back to.
 
 **This strategy is live and unvalidated — no backtest exists.** Parameters
 were chosen conservatively (cited defaults where they exist) but there is
@@ -105,7 +118,11 @@ python -m pytest -q
 ```
 
 18 tests covering `risk/sizing.py`, `risk/circuit_breaker.py`, and
-`ledger/tracker.py` against synthetic data (no live API calls).
+`ledger/tracker.py` against synthetic data (no live API calls). **These
+currently all fail** — they are the scaffold's acceptance contract for the
+implementation pass, not a broken state to "fix" by weakening the tests.
+Implement the corresponding modules until they pass; do not edit the
+tests to make them pass instead.
 
 ## Stage 2 integration notes (not built here)
 
