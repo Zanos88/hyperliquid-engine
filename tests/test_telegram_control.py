@@ -24,9 +24,11 @@ INTRUDER_ID = 999999
 class FakeMessage:
     def __init__(self):
         self.replies: list[str] = []
+        self.markups: list = []
 
-    async def reply_text(self, text):
+    async def reply_text(self, text, reply_markup=None):
         self.replies.append(text)
+        self.markups.append(reply_markup)
 
 
 class FakeCallbackQuery:
@@ -34,12 +36,14 @@ class FakeCallbackQuery:
         self.data = data
         self.answered = False
         self.edits: list[str] = []
+        self.markups: list = []
 
     async def answer(self):
         self.answered = True
 
-    async def edit_message_text(self, text):
+    async def edit_message_text(self, text, reply_markup=None):
         self.edits.append(text)
+        self.markups.append(reply_markup)
 
 
 class FakeUpdate:
@@ -262,3 +266,48 @@ def test_close_fraction_button():
     assert len(execution.closes) == 1
     _, fraction, purpose = execution.closes[0]
     assert float(fraction) == 0.5 and purpose == "close_50"
+
+
+def test_close_button_survives_no_active_account():
+    """Regression (found in live Frame B testing): with no active challenge
+    the SDK raises `account_id not set` — the handler must reply
+    gracefully, not crash unanswered."""
+    services, _, execution = make_services()
+
+    def raising(base=None):
+        raise ValueError("account_id not set. Call client.setup() first")
+
+    execution.get_open_positions = raising
+    upd = FakeUpdate(ADMIN_ID, callback_data="close_50_BTC")
+    run(handlers.cb_close_fraction(upd, FakeContext(), services))
+    assert "No open BTC position" in upd.output()      # graceful reply, no crash
+
+    upd2 = FakeUpdate(ADMIN_ID, callback_data="slbe_BTC")
+    run(handlers.cb_sl_breakeven(upd2, FakeContext(), services))
+    assert "No open BTC position" in upd2.output()
+
+
+def test_frame_b_markup_shape():
+    markup = handlers.frame_b_markup("BTC")
+    rows = markup["inline_keyboard"]
+    all_callbacks = [b["callback_data"] for row in rows for b in row]
+    assert all_callbacks == ["close_25_BTC", "close_50_BTC", "close_100_BTC", "slbe_BTC"]
+    assert all(len(cb.encode()) <= 64 for cb in all_callbacks)   # Telegram callback_data limit
+
+
+def test_dashboard_attaches_frame_b_only_with_positions():
+    # with a position -> Frame B keyboard attached
+    services, _, execution = make_services()
+    execution.positions = [{"positionId": "P1", "positionSide": "long", "quantity": "0.5",
+                            "base": "BTC", "entryPrice": "60000", "markPrice": "60100",
+                            "unrealizedPnl": "50"}]
+    upd = FakeUpdate(ADMIN_ID)
+    run(handlers.cmd_dashboard(upd, FakeContext(), services))
+    assert upd.message.markups[-1] is not None
+
+    # without positions -> plain text, no keyboard
+    services2, _, execution2 = make_services()
+    execution2.positions = []
+    upd2 = FakeUpdate(ADMIN_ID)
+    run(handlers.cmd_dashboard(upd2, FakeContext(), services2))
+    assert upd2.message.markups[-1] is None

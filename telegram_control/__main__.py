@@ -92,7 +92,12 @@ def main() -> None:
             await fn(update, context, services)
         return wrapped
 
+    async def on_error(update, context):
+        logger.error("handler exception (update=%s)", getattr(update, "update_id", "?"),
+                     exc_info=context.error)
+
     app = ApplicationBuilder().token(token).build()
+    app.add_error_handler(on_error)
     app.add_handler(CommandHandler("kill", wire(handlers.cmd_kill), block=False))  # un-blockable
     app.add_handler(CommandHandler("run", wire(handlers.cmd_run)))
     app.add_handler(CommandHandler("pause", wire(handlers.cmd_pause)))

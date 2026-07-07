@@ -30,17 +30,47 @@ class ControlServices:
     gate: Callable = evaluate_gate  # injectable for tests
 
 
+def frame_b_markup(base: str = "BTC") -> dict:
+    """Frame B — position dashboard buttons (V2 report section 4).
+    Fractions only, never notional; SL→Breakeven uses Propr's fee-
+    inclusive breakEvenPrice field."""
+    return {"inline_keyboard": [
+        [
+            {"text": "Close 25%", "callback_data": f"close_25_{base}"},
+            {"text": "Close 50%", "callback_data": f"close_50_{base}"},
+            {"text": "Close All", "callback_data": f"close_100_{base}"},
+        ],
+        [
+            {"text": "SL → Breakeven", "callback_data": f"slbe_{base}"},
+        ],
+    ]}
+
+
 def _user_id(update) -> int | None:
     user = getattr(update, "effective_user", None)
     return getattr(user, "id", None)
 
 
-async def _reply(update, text: str) -> None:
+def _to_ptb_markup(reply_markup: dict | None):
+    """Convert a plain inline-keyboard dict to PTB's InlineKeyboardMarkup
+    at the send boundary (markup builders stay plain dicts for tests and
+    for the engine's raw-HTTP alert path)."""
+    if reply_markup is None:
+        return None
+    try:
+        from telegram import InlineKeyboardMarkup
+        return InlineKeyboardMarkup.de_json(reply_markup, None)
+    except ImportError:
+        return reply_markup  # test environments without PTB semantics
+
+
+async def _reply(update, text: str, reply_markup: dict | None = None) -> None:
+    markup = _to_ptb_markup(reply_markup)
     if getattr(update, "message", None) is not None:
-        await update.message.reply_text(text)
+        await update.message.reply_text(text, reply_markup=markup)
     elif getattr(update, "callback_query", None) is not None:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text)
+        await update.callback_query.edit_message_text(text, reply_markup=markup)
 
 
 def _denied(update, action: str) -> bool:
@@ -126,7 +156,10 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
     if not positions:
         lines.append("Open positions: none")
     lines.append(f"Updated: {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}")
-    await _reply(update, "\n".join(lines))
+    # Frame B attaches whenever there is a position to act on (spec: the
+    # position dashboard carries the contextual execution buttons).
+    markup = frame_b_markup(positions[0].get("base", "BTC")) if positions else None
+    await _reply(update, "\n".join(lines), reply_markup=markup)
 
 
 async def cmd_risk(update, context, services: ControlServices) -> None:
@@ -156,6 +189,17 @@ async def cmd_risk(update, context, services: ControlServices) -> None:
         await _reply(update, f"✅ {param} updated -> {new[param]} (change logged)")
     except Exception as exc:
         await _reply(update, f"❌ rejected: {exc}")
+
+
+def _safe_positions(services: ControlServices, base: str) -> list[dict]:
+    """Position lookup that survives the no-active-account state (pre-
+    purchase / dry-run) — found by live Frame B testing: the raw SDK call
+    raises `account_id not set` with no active challenge attempt."""
+    try:
+        return services.execution.get_open_positions(base=base)
+    except Exception:
+        logger.warning("position lookup failed (no active trading account?)", exc_info=True)
+        return []
 
 
 # ── inline buttons (contextual execution — every path through the gate) ──
@@ -221,9 +265,9 @@ async def cb_close_fraction(update, context, services: ControlServices) -> None:
     _, pct_str, base = update.callback_query.data.split("_", 2)
     fraction = Decimal(pct_str) / Decimal(100)
 
-    positions = services.execution.get_open_positions(base=base)
+    positions = _safe_positions(services, base)
     if not positions:
-        await _reply(update, f"No open {base} position.")
+        await _reply(update, f"No open {base} position (or no active trading account).")
         return
     result = services.execution.close_position_market(positions[0], fraction=fraction, purpose=f"close_{pct_str}")
     await _reply(update, f"✂️ Close {pct_str}% dispatched (dry_run={result.dry_run}).")
@@ -235,9 +279,9 @@ async def cb_sl_breakeven(update, context, services: ControlServices) -> None:
     if _denied(update, "slbe"):
         return
     _, base = update.callback_query.data.split("_", 1)
-    positions = services.execution.get_open_positions(base=base)
+    positions = _safe_positions(services, base)
     if not positions:
-        await _reply(update, f"No open {base} position.")
+        await _reply(update, f"No open {base} position (or no active trading account).")
         return
     pos = positions[0]
     be = pos.get("breakEvenPrice")
