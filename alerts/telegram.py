@@ -32,16 +32,23 @@ class TelegramClient:
                 "— this bot must use its own dedicated token/channel, never Bullphoric's."
             )
 
-    def send(self, text: str, timeout: float = 10.0) -> bool:
+    def send(self, text: str, timeout: float = 10.0, reply_markup: dict | None = None) -> bool:
         """Send a message; on failure log a WARNING and return False.
 
         Never a silent except — a swallowed delivery failure would defeat
         the heartbeat's whole purpose (silence must mean dead process,
         not dead error handler).
+
+        reply_markup: optional Telegram inline keyboard dict, e.g.
+        {"inline_keyboard": [[{"text": "...", "callback_data": "..."}]]}
+        — used by the V2 engine for Frame A signal frames.
         """
         url = f"{TELEGRAM_API_BASE}/bot{self.bot_token}/sendMessage"
+        payload: dict = {"chat_id": self.chat_id, "text": text}
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         try:
-            resp = requests.post(url, json={"chat_id": self.chat_id, "text": text}, timeout=timeout)
+            resp = requests.post(url, json=payload, timeout=timeout)
             resp.raise_for_status()
             return True
         except requests.RequestException:
