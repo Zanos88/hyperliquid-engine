@@ -22,7 +22,7 @@ All three share state ONLY through Postgres (`engine_state`,
 | `BTC_SIGNAL_BOT_TELEGRAM_TOKEN` / `_CHAT_ID` | engine, guardian, control | Never Bullphoric's |
 | `PROPR_API_KEY` | all | Secret; Railway service variable |
 | `PROPR_BUILDER_CODE` | all | Sent as `X-Builder-Code` on every request |
-| `DATABASE_URL` / `DATABASE_PUBLIC_URL` | all | Railway references `${{Postgres.*}}`; public used automatically for local runs |
+| `DATABASE_URL` / `DATABASE_PUBLIC_URL` | all | **Supabase project `btc-signal-bot` (`lnycymeylmhjqpwtdint`, us-east-1)** since the 2026-07-07 schema-only migration. Currently the direct-connection URI (IPv6 — works from the local machine). ⚠️ Before deploying V2 processes ON Railway, switch both to the **Session pooler** URI (`aws-*.pooler.supabase.com:5432`) — Railway compute has no outbound IPv6. RLS is enabled with no policies (bot's postgres role bypasses; REST/anon surface blocked). Rollback: point both vars back at the Railway Postgres references — kept intact, dry-run-era data only. Note Railway credit was near exhaustion at migration time; the rollback window depends on it. |
 | `BTC_SIGNAL_BOT_ADMIN_IDS` | control plane | Comma-separated Telegram user IDs. **Empty = everyone locked out (fail closed)** |
 | `DRY_RUN` | engine, guardian, control | **Unset/anything ≠ "false" means dry-run.** Switch 1 of 2 |
 
