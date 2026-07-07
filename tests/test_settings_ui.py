@@ -50,7 +50,7 @@ def test_decorate_labels_mode_and_combo():
 
     test = {"mode": "test", "active_bias_tf": "5m", "active_trigger_tf": "1m"}
     out2 = decorate("hello", test)
-    assert out2.startswith("\U0001F9EA [TEST MODE]")
+    assert out2.startswith("\U0001F9EA <b>[TEST MODE]</b>")
     assert "TF: 5m bias / 1m trigger (test)" in out2
 
 

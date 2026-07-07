@@ -78,13 +78,17 @@ async def _ack(update) -> None:
         logger.debug("callback ack failed (stale/duplicate) — continuing with edit")
 
 
-async def _reply(update, text: str, reply_markup: dict | None = None) -> None:
+async def _reply(update, text: str, reply_markup: dict | None = None,
+                 parse_mode: str | None = None) -> None:
     markup = _to_ptb_markup(reply_markup)
+    kwargs = {"reply_markup": markup}
+    if parse_mode is not None:
+        kwargs["parse_mode"] = parse_mode
     if getattr(update, "message", None) is not None:
-        await update.message.reply_text(text, reply_markup=markup)
+        await update.message.reply_text(text, **kwargs)
     elif getattr(update, "callback_query", None) is not None:
         await _ack(update)
-        await update.callback_query.edit_message_text(text, reply_markup=markup)
+        await update.callback_query.edit_message_text(text, **kwargs)
 
 
 def _denied(update, action: str) -> bool:
@@ -426,10 +430,10 @@ async def cmd_testalert(update, context, services: ControlServices) -> None:
     exit_text = format_exit_alert(closed, 1_551.13,
                                   context={**ctx, "equity": 101_551.13})
 
-    banner = "⚠️ SYNTHETIC — format preview only, not a real signal\n\n"
-    await _reply(update, banner + entry_text)
+    banner = "⚠️ <b>SYNTHETIC — format preview only, not a real signal</b>\n\n"
+    await _reply(update, banner + entry_text, parse_mode="HTML")
     if getattr(update, "message", None) is not None:
-        await update.message.reply_text(banner + exit_text)
+        await update.message.reply_text(banner + exit_text, parse_mode="HTML")
 
 
 def _safe_positions(services: ControlServices, base: str) -> list[dict]:

@@ -43,7 +43,7 @@ def _floor_lines(context: dict) -> list[str]:
     daily_left = max(equity - daily_floor, 0.0)
     dd_left = max(equity - STATIC_FLOOR_USD, 0.0)
     return [
-        f"Loss buffers: today ${daily_left:,.0f} of ${DAILY_LOSS_LIMIT_USD:,.0f} left before daily breach | "
+        f"🛡 <b>Loss buffers</b>: today ${daily_left:,.0f} of ${DAILY_LOSS_LIMIT_USD:,.0f} left before daily breach | "
         f"${dd_left:,.0f} left before max-drawdown floor (${STATIC_FLOOR_USD:,.0f})"
     ]
 
@@ -107,19 +107,23 @@ def format_entry_signal(signal: Signal, quantity: float, risk_pct: float,
     trigger_tf = context.get("trigger_tf", "trigger")
 
     lines = [
-        f"\U0001F3AF SIGNAL — {action} BTC-PERP ({side})",
-        "── Direction",
+        f"\U0001F3AF <b>SIGNAL — {action} BTC-PERP ({side})</b>",
+        "",
+        "\U0001F4CD <b>Direction</b>",
         f"{action} {side.lower()} @ ~${signal.entry:,.2f} (market entry on {trigger_tf} close)",
     ]
     reasoning = _reasoning_lines(context)
     if reasoning:
-        lines.append("── Reasoning (why this fired)")
+        lines.append("")
+        lines.append("\U0001F9E0 <b>Reasoning</b> (why this fired)")
         lines.extend(reasoning)
     pos_ctx = _position_context_lines(context)
     if pos_ctx:
-        lines.append("── Position Context")
+        lines.append("")
+        lines.append("\U0001F4BC <b>Position Context</b>")
         lines.extend(pos_ctx)
-    lines.append("── Risk")
+    lines.append("")
+    lines.append("⚖️ <b>Risk</b>")
     lines.append(f"Stop ${signal.stop:,.2f} (structural: beyond nearest S/R −0.15%) | "
                  f"Target ${signal.target:,.2f} (next opposing structural level)")
     att = context.get("attenuation")
@@ -127,7 +131,8 @@ def format_entry_signal(signal: Signal, quantity: float, risk_pct: float,
     lines.append(f"R:R {signal.reward_risk:.2f} | Size {quantity:.5f} BTC | "
                  f"Risk ${risk_amount:,.2f} ({risk_pct:.2%}{att_s})")
     lines.extend(_floor_lines(context))
-    lines.append(f"Time: {signal.timestamp.strftime('%H:%M UTC')}")
+    lines.append("")
+    lines.append(f"\U0001F550 {signal.timestamp.strftime('%H:%M UTC')}")
     return "\n".join(lines)
 
 
@@ -142,11 +147,14 @@ def format_exit_alert(closed: ClosedPosition, running_daily_pnl: float,
     outcome = "TARGET HIT" if closed.exit_reason == "target" else "STOP HIT"
 
     lines = [
-        f"{emoji} CLOSED {side} ({closing_action}) — {outcome}",
+        f"{emoji} <b>CLOSED {side} ({closing_action}) — {outcome}</b>",
+        "",
+        "💰 <b>Result</b>",
         f"Entry ${closed.signal.entry:,.2f} → Exit ${closed.exit_price:,.2f} "
         f"({closed.quantity:.5f} BTC)",
-        f"Result: {closed.pnl_r:+.2f}R (${closed.pnl:+,.2f})",
+        f"<b>{closed.pnl_r:+.2f}R (${closed.pnl:+,.2f})</b>",
         f"Running daily P&L: ${running_daily_pnl:+,.2f}",
+        "",
     ]
     open_n = context.get("open_positions")
     if open_n is not None:
@@ -163,7 +171,8 @@ def format_daily_summary(stats: dict, current_bias: str, halt_events_today: int,
     win_rate_str = f"{win_rate:.0%}" if win_rate is not None else "n/a"
     day_start = stats["equity"] - stats["daily_pnl"]
     lines = [
-        "\U0001F4CA DAILY SUMMARY (00:00 UTC)",
+        "\U0001F4CA <b>DAILY SUMMARY</b> (00:00 UTC)",
+        "",
         f"Signals fired: {stats['signals_fired']} | Closed: {stats['closed_trades']} | Win rate: {win_rate_str}",
         f"Equity: ${day_start:,.2f} → ${stats['equity']:,.2f} "
         f"(${stats['daily_pnl']:+,.2f}, {stats['daily_pnl_pct']:+.2%})",
@@ -182,7 +191,9 @@ def format_heartbeat(current_bias: str, last_data_timestamp: datetime,
     strategy is noticed by this content."""
     context = context or {}
     status = "\U0001F7E2 alive" if feed_errors_since_last == 0 else "\U0001F7E1 alive (with feed errors)"
-    lines = [f"\U0001F493 HEARTBEAT: {status}",
+    lines = [f"\U0001F493 <b>HEARTBEAT</b>: {status}",
+             "",
+             "\U0001F4CA <b>Market</b>",
              f"Bias: {current_bias}"]
 
     last_price = context.get("last_price")
@@ -200,14 +211,17 @@ def format_heartbeat(current_bias: str, last_data_timestamp: datetime,
 
     reasoning = _reasoning_lines(context)
     if reasoning:
-        lines.append("Last readings:")
+        lines.append("")
+        lines.append("🧠 <b>Last readings</b>")
         lines.extend(reasoning)
 
     pos = context.get("position_line")
     if pos is not None:
-        lines.append(f"Position: {pos}")
+        lines.append("")
+        lines.append(f"💼 <b>Position</b>: {pos}")
     lines.extend(_floor_lines(context))
-    lines.append(f"Last data: {last_data_timestamp.strftime('%Y-%m-%d %H:%M UTC')} | "
+    lines.append("")
+    lines.append(f"🕐 Last data: {last_data_timestamp.strftime('%Y-%m-%d %H:%M UTC')} | "
                  f"feed errors since last heartbeat: {feed_errors_since_last}")
     return "\n".join(lines)
 
@@ -215,8 +229,9 @@ def format_heartbeat(current_bias: str, last_data_timestamp: datetime,
 def format_halt_alert(daily_pnl_pct: float, context: dict | None = None) -> str:
     context = context or {}
     lines = [
-        "\U0001F6D1 CIRCUIT BREAKER HALT",
-        f"Daily P&L reached {daily_pnl_pct:+.2%}, breaching the -2.5% internal buffer "
+        "\U0001F6D1 <b>CIRCUIT BREAKER HALT</b>",
+        "",
+        f"Daily P&L reached <b>{daily_pnl_pct:+.2%}</b>, breaching the -2.5% internal buffer "
         "(inside the challenge's real -3% daily limit).",
     ]
     equity = context.get("equity")

@@ -68,9 +68,9 @@ def newest_closed_open_time(candles) -> int | None:
 def decorate(text: str, settings: dict) -> str:
     """Uniform alert decoration (build requirement: every alert states the
     active combo; test-mode alerts are unmistakably labeled)."""
-    prefix = "\U0001F9EA [TEST MODE]\n" if settings["mode"] == "test" else ""
-    suffix = (f"\nTF: {settings['active_bias_tf']} bias / "
-              f"{settings['active_trigger_tf']} trigger ({settings['mode']})")
+    prefix = "\U0001F9EA <b>[TEST MODE]</b>\n\n" if settings["mode"] == "test" else ""
+    suffix = (f"\n<i>TF: {settings['active_bias_tf']} bias / "
+              f"{settings['active_trigger_tf']} trigger ({settings['mode']})</i>")
     return prefix + text + suffix
 
 

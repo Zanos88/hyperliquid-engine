@@ -32,7 +32,8 @@ class TelegramClient:
                 "— this bot must use its own dedicated token/channel, never Bullphoric's."
             )
 
-    def send(self, text: str, timeout: float = 10.0, reply_markup: dict | None = None) -> bool:
+    def send(self, text: str, timeout: float = 10.0, reply_markup: dict | None = None,
+             parse_mode: str | None = "HTML") -> bool:
         """Send a message; on failure log a WARNING and return False.
 
         Never a silent except — a swallowed delivery failure would defeat
@@ -45,6 +46,8 @@ class TelegramClient:
         """
         url = f"{TELEGRAM_API_BASE}/bot{self.bot_token}/sendMessage"
         payload: dict = {"chat_id": self.chat_id, "text": text}
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode  # HTML: enables <b>/<i> in alert templates
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         try:

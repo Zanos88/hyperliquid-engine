@@ -60,7 +60,7 @@ def test_entry_states_sell_explicitly_for_short():
 
 def test_entry_has_all_four_sections():
     text = format_entry_signal(long_signal(), 0.85, 0.0075, 750.0, context=CTX)
-    for section in ("── Direction", "── Reasoning", "── Position Context", "── Risk"):
+    for section in ("<b>Direction</b>", "<b>Reasoning</b>", "<b>Position Context</b>", "<b>Risk</b>"):
         assert section in text, f"missing section {section}"
 
 
@@ -84,8 +84,8 @@ def test_entry_risk_section_has_floors_and_attenuation():
 def test_entry_without_context_degrades_gracefully():
     text = format_entry_signal(long_signal(), 0.85, 0.0075, 750.0)
     assert "BUY BTC-PERP (LONG)" in text
-    assert "── Risk" in text                      # risk always present
-    assert "── Reasoning" not in text             # omitted, never faked
+    assert "<b>Risk</b>" in text                  # risk always present
+    assert "<b>Reasoning</b>" not in text         # omitted, never faked
 
 
 def test_exit_states_closing_action():
@@ -141,7 +141,7 @@ def test_testalert_command(monkeypatch):
         def __init__(self):
             self.replies = []
 
-        async def reply_text(self, text, reply_markup=None):
+        async def reply_text(self, text, reply_markup=None, parse_mode=None):
             self.replies.append(text)
 
     class FakeUpdate:
@@ -157,7 +157,7 @@ def test_testalert_command(monkeypatch):
     joined = "\n\n".join(upd.message.replies)
     assert "SYNTHETIC" in joined
     assert "BUY BTC-PERP (LONG)" in joined
-    assert "── Reasoning" in joined
+    assert "<b>Reasoning</b>" in joined
     assert "CLOSED LONG (SELL)" in joined
 
     intruder = FakeUpdate(999999)
