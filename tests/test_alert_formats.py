@@ -74,8 +74,8 @@ def test_entry_reasoning_cites_actual_values():
 
 def test_entry_risk_section_has_floors_and_attenuation():
     text = format_entry_signal(long_signal(), 0.85, 0.0075, 750.0, context=CTX)
-    assert "daily $97,000 ($3,000 away)" in text
-    assert "static $94,000 ($6,000 away)" in text
+    assert "today $3,000 of $3,000 left before daily breach" in text
+    assert "$6,000 left before max-drawdown floor ($94,000)" in text
     assert "attenuation 1.000" in text
     assert "structural" in text                   # stop labeled structural
     assert "no hyperliquid" not in text.lower() and "hyperliquid" not in text.lower()
@@ -94,7 +94,7 @@ def test_exit_states_closing_action():
     text = format_exit_alert(closed, 1_547.0, context={**CTX, "equity": 101_547.0})
     assert "CLOSED LONG (SELL) — TARGET HIT" in text
     assert "+2.07R" in text and "$+1,547.00" in text
-    assert "away)" in text                        # floor distances present
+    assert "left before daily breach" in text     # loss buffers present
 
     closed_s = ClosedPosition(signal=short_signal(), quantity=0.85, opened_at=NOW, closed_at=NOW,
                               exit_price=62_600.0, exit_reason="stop", pnl=-700.0, pnl_r=-1.0)
@@ -110,7 +110,7 @@ def test_heartbeat_is_why_snapshot():
     assert "Structural long setup: stop $60,900 / target $63,600" in text
     assert "R:R 2.1" in text
     assert "Fisher (1h): bullish cross" in text   # last readings surfaced
-    assert "away)" in text                        # floor distances
+    assert "left before daily breach" in text     # loss buffers
     assert "feed errors since last heartbeat: 0" in text
 
 
@@ -119,7 +119,7 @@ def test_halt_shows_numbers():
     text = format_halt_alert(-0.026, context=ctx)
     assert "-2.60%" in text
     assert "Equity $97,400.00" in text
-    assert "away)" in text
+    assert "left before daily breach" in text
 
 
 def test_daily_summary_shows_equity_curve():

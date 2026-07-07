@@ -30,14 +30,21 @@ _TF_LABEL = {"bias_sr": "bias", "ichimoku": "bias", "fisher": "trigger",
 
 
 def _floor_lines(context: dict) -> list[str]:
+    """Survival cushion vs the two challenge kill-conditions (both prior
+    attempts failed on the daily limit — this is THE number to watch):
+    daily = how much more can be lost TODAY before the -3% daily breach;
+    max-DD = how much more before the $94,000 static floor (challenge over).
+    """
     equity = context.get("equity")
     day_start = context.get("day_start_equity")
     if equity is None or day_start is None:
         return []
     daily_floor = day_start - DAILY_LOSS_LIMIT_USD
+    daily_left = max(equity - daily_floor, 0.0)
+    dd_left = max(equity - STATIC_FLOOR_USD, 0.0)
     return [
-        f"Floors: daily ${daily_floor:,.0f} (${equity - daily_floor:,.0f} away) | "
-        f"static ${STATIC_FLOOR_USD:,.0f} (${equity - STATIC_FLOOR_USD:,.0f} away)"
+        f"Loss buffers: today ${daily_left:,.0f} of ${DAILY_LOSS_LIMIT_USD:,.0f} left before daily breach | "
+        f"${dd_left:,.0f} left before max-drawdown floor (${STATIC_FLOOR_USD:,.0f})"
     ]
 
 
