@@ -105,6 +105,20 @@ def test_trigger_fails_closed_without_risk_prices(store):
     assert ok is False
 
 
+def test_strategy_settings_roundtrip(store):
+    s = store.get_strategy_settings()
+    assert s["mode"] in ("production", "test")
+    store.set_strategy_setting("mode", "test", updated_by="test")
+    assert store.get_strategy_settings()["active_bias_tf"] == store.get_strategy_settings()["test_bias_tf"]
+    store.set_strategy_setting("prod_bias_tf", "8h", updated_by="test")
+    assert store.get_strategy_settings()["prod_bias_tf"] == "8h"
+    with pytest.raises(Exception):
+        store.set_strategy_setting("prod_trigger_tf", "1w", updated_by="test")  # trigger >= bias
+    # restore seeds
+    store.set_strategy_setting("prod_bias_tf", "4h", updated_by="test")
+    store.set_strategy_setting("mode", "production", updated_by="test")
+
+
 def test_engine_state_roundtrip(store):
     assert store.get_engine_state() in ("ACTIVE", "PAUSED", "KILLED")
     store.set_engine_state("ACTIVE", updated_by="test")

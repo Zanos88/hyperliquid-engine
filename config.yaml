@@ -18,8 +18,12 @@ strategy:
 
 data:
   coin: BTC
-  bias_interval: "4h"
-  trigger_interval: "1h"
+  # Timeframes + strategy_mode are DB-backed at runtime (strategy_settings
+  # table, set live via the Telegram /settings menu; seeded in
+  # db/schema.sql to production 4h/1h, test 5m/1m). The values below are
+  # documentation of the seed only — the engine does NOT read them.
+  # strategy_mode: production | test
+  # production: bias 4h / trigger 1h; test: bias 5m / trigger 1m
 
 telegram:
   bot_token_env: BTC_SIGNAL_BOT_TELEGRAM_TOKEN

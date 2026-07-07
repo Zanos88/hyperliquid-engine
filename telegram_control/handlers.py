@@ -134,10 +134,16 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
     daily_pnl = equity - day_start
     daily_floor = day_start - 3_000
     state = services.store.get_engine_state()
+    try:
+        s = services.store.get_strategy_settings()
+        mode_line = f"Mode: {s['mode']} | TF: {s['active_bias_tf']} bias / {s['active_trigger_tf']} trigger"
+    except Exception:
+        mode_line = "Mode: (settings unavailable)"
 
     lines = [
         "\U0001F4CB DASHBOARD",
         f"Engine: {state}",
+        mode_line,
         f"Equity: ${equity:,.2f}",
         f"Daily P&L: ${daily_pnl:+,.2f} ({daily_pnl / day_start:+.2%})",
         f"Distance to daily floor (${daily_floor:,.0f}): ${equity - daily_floor:,.2f}",
@@ -189,6 +195,110 @@ async def cmd_risk(update, context, services: ControlServices) -> None:
         await _reply(update, f"✅ {param} updated -> {new[param]} (change logged)")
     except Exception as exc:
         await _reply(update, f"❌ rejected: {exc}")
+
+
+# ── /settings — Trojan-style mode + timeframe panel ──
+
+_TF_MENUS = {
+    # menu key -> (setting name, allowed list source, panel title)
+    "pbias": ("prod_bias_tf", "production", "Production BIAS timeframe"),
+    "ptrig": ("prod_trigger_tf", "production", "Production TRIGGER timeframe"),
+    "tbias": ("test_bias_tf", "test", "Test BIAS timeframe"),
+    "ttrig": ("test_trigger_tf", "test", "Test TRIGGER timeframe"),
+}
+
+
+def _settings_text(s: dict) -> str:
+    mode_icon = "\U0001F3ED" if s["mode"] == "production" else "\U0001F9EA"
+    return (
+        "⚙️ STRATEGY SETTINGS\n"
+        f"Mode: {mode_icon} {s['mode'].upper()}\n"
+        f"Production combo: {s['prod_bias_tf']} bias / {s['prod_trigger_tf']} trigger\n"
+        f"Test combo: {s['test_bias_tf']} bias / {s['test_trigger_tf']} trigger\n"
+        f"Active: {s['active_bias_tf']} / {s['active_trigger_tf']}\n"
+        "Changes apply from the next engine cycle."
+    )
+
+
+def settings_menu_markup(s: dict) -> dict:
+    prod_mark = " ✓" if s["mode"] == "production" else ""
+    test_mark = " ✓" if s["mode"] == "test" else ""
+    return {"inline_keyboard": [
+        [
+            {"text": f"\U0001F3ED Production Mode{prod_mark}", "callback_data": "stg_mode_production"},
+            {"text": f"\U0001F9EA Test Mode{test_mark}", "callback_data": "stg_mode_test"},
+        ],
+        [
+            {"text": "Prod Bias TF", "callback_data": "stg_menu_pbias"},
+            {"text": "Prod Trigger TF", "callback_data": "stg_menu_ptrig"},
+        ],
+        [
+            {"text": "Test Bias TF", "callback_data": "stg_menu_tbias"},
+            {"text": "Test Trigger TF", "callback_data": "stg_menu_ttrig"},
+        ],
+    ]}
+
+
+def timeframe_menu_markup(menu_key: str, current: str) -> dict:
+    from strategy.timeframes import PRODUCTION_TIMEFRAMES, TEST_TIMEFRAMES
+
+    _, mode_kind, _ = _TF_MENUS[menu_key]
+    options = PRODUCTION_TIMEFRAMES if mode_kind == "production" else TEST_TIMEFRAMES
+    rows, row = [], []
+    for tf in options:
+        mark = " ✓" if tf == current else ""
+        row.append({"text": f"{tf}{mark}", "callback_data": f"stg_{menu_key}_{tf}"})
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([{"text": "⬅️ Back", "callback_data": "stg_back"}])
+    return {"inline_keyboard": rows}
+
+
+async def cmd_settings(update, context, services: ControlServices) -> None:
+    if _denied(update, "/settings"):
+        return
+    s = services.store.get_strategy_settings()
+    await _reply(update, _settings_text(s), reply_markup=settings_menu_markup(s))
+
+
+async def cb_settings(update, context, services: ControlServices) -> None:
+    """All stg_* callbacks: mode switches, submenu opens, timeframe picks."""
+    if _denied(update, "settings"):
+        return
+    data = update.callback_query.data  # stg_...
+    who = f"telegram:{_user_id(update)}"
+    parts = data.split("_", 2)  # ["stg", verb, rest]
+    verb = parts[1] if len(parts) > 1 else ""
+    rest = parts[2] if len(parts) > 2 else ""
+
+    try:
+        if verb == "mode":
+            s = services.store.set_strategy_setting("mode", rest, updated_by=who)
+        elif verb == "menu":
+            s = services.store.get_strategy_settings()
+            setting_name, _, title = _TF_MENUS[rest]
+            await _reply(update, f"⚙️ {title}\nCurrent: {s[setting_name]}",
+                         reply_markup=timeframe_menu_markup(rest, s[setting_name]))
+            return
+        elif verb == "back":
+            s = services.store.get_strategy_settings()
+        elif verb in _TF_MENUS:
+            setting_name, _, _ = _TF_MENUS[verb]
+            s = services.store.set_strategy_setting(setting_name, rest, updated_by=who)
+        else:
+            await _reply(update, f"Unknown settings action: {data}")
+            return
+    except ValueError as exc:
+        # invalid combo (e.g. bias not longer than trigger) — explain, re-show panel
+        s = services.store.get_strategy_settings()
+        await _reply(update, f"❌ {exc}\n\n{_settings_text(s)}",
+                     reply_markup=settings_menu_markup(s))
+        return
+
+    await _reply(update, _settings_text(s), reply_markup=settings_menu_markup(s))
 
 
 def _safe_positions(services: ControlServices, base: str) -> list[dict]:

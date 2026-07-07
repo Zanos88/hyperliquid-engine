@@ -1,15 +1,15 @@
 """Engine — Stage 2 scheduler (signal -> gate -> dry-run execution).
 
-Evaluates strategy logic only on 1H/4H candle closes (closed candles
-only). Every approved entry routes through the risk gate; intents are
-recorded to Postgres BEFORE any dispatch (the floor-guard trigger is the
-last line of defense) and the execution service is dry-run by default —
-V2 dispatches nothing live.
+Timeframes and mode are DB-backed (`strategy_settings`, set live via the
+/settings control-plane menu) and re-read every cycle. Candle-close
+detection is DATA-DRIVEN: a new trigger-timeframe close is detected when
+the newest CLOSED candle's open_time changes — robust for every native
+interval (15m through 1w) without epoch-boundary assumptions. All
+strategy decisions still evaluate on closed candles only.
 
-The Stage 1 paper ledger stays as the dry-run P&L source: it drives the
-circuit breaker, telemetry, daily summary, and heartbeat exactly as
-before. Engine state (ACTIVE/PAUSED/KILLED) is shared cross-process via
-Postgres and controlled by the Telegram control plane and guardian.
+Every outgoing alert is decorated with the active timeframe combo, and
+prefixed [TEST MODE] when mode=test, so a switched config is always
+traceable in channel history.
 """
 from __future__ import annotations
 
@@ -36,13 +36,12 @@ from risk.circuit_breaker import CircuitBreaker
 from risk.gate import evaluate_gate
 from strategy.bias_4h import compute_bias
 from strategy.signals import Signal, SuppressedSignal, evaluate_signal
+from strategy.timeframes import LOOKBACK_BARS, interval_seconds
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("btc_signal_bot")
 
 POLL_SECONDS = 60
-LOOKBACK_1H = timedelta(hours=300)
-LOOKBACK_4H = timedelta(hours=4 * 300)
 
 
 def load_config(path: str = "config.yaml") -> dict:
@@ -54,10 +53,25 @@ def _ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _last_closed_candle_time(now: datetime, interval_hours: int) -> datetime:
-    epoch_hours = int(now.timestamp() // 3600)
-    current_open_hour = (epoch_hours // interval_hours) * interval_hours
-    return datetime.fromtimestamp((current_open_hour - interval_hours) * 3600, tz=timezone.utc)
+def lookback_ms(tf: str, bars: int = LOOKBACK_BARS) -> int:
+    """Request window: `bars` x interval. Hyperliquid returns what exists
+    (1w history is ~150 bars — still >= the ~22-bar indicator minimum)."""
+    return bars * interval_seconds(tf) * 1000
+
+
+def newest_closed_open_time(candles) -> int | None:
+    """Data-driven close marker: the open_time of the newest CLOSED candle
+    (data/feed.fetch_candles already guarantees only closed candles)."""
+    return candles[-1].open_time_ms if candles else None
+
+
+def decorate(text: str, settings: dict) -> str:
+    """Uniform alert decoration (build requirement: every alert states the
+    active combo; test-mode alerts are unmistakably labeled)."""
+    prefix = "\U0001F9EA [TEST MODE]\n" if settings["mode"] == "test" else ""
+    suffix = (f"\nTF: {settings['active_bias_tf']} bias / "
+              f"{settings['active_trigger_tf']} trigger ({settings['mode']})")
+    return prefix + text + suffix
 
 
 def frame_a_markup(signal_id: str) -> dict:
@@ -87,7 +101,8 @@ def run() -> None:
     breaker = CircuitBreaker(day_start_equity=ledger.equity)
     peak_equity = ledger.equity
 
-    last_1h_close_seen: datetime | None = None
+    last_trigger_open_seen: int | None = None
+    active_combo_seen: tuple[str, str] | None = None
     last_heartbeat_at = datetime.now(timezone.utc)
     last_day = datetime.now(timezone.utc).date()
     feed_errors_since_heartbeat = 0
@@ -96,59 +111,76 @@ def run() -> None:
     last_data_timestamp = datetime.now(timezone.utc)
     latest_indicators: dict = {}
 
-    logger.info("engine starting (Stage 2, DRY-RUN execution; state=%s)", store.get_engine_state())
-    sent = telegram.send(format_heartbeat(current_bias_label, last_data_timestamp, 0))
+    settings = store.get_strategy_settings()
+    logger.info("engine starting (Stage 2, DRY-RUN execution; state=%s mode=%s tf=%s/%s)",
+                store.get_engine_state(), settings["mode"],
+                settings["active_bias_tf"], settings["active_trigger_tf"])
+    sent = telegram.send(decorate(format_heartbeat(current_bias_label, last_data_timestamp, 0), settings))
     logger.info("startup heartbeat sent=%s", sent)
 
     while True:
         now = datetime.now(timezone.utc)
 
         try:
-            close_1h = _last_closed_candle_time(now, 1)
-            new_1h_close = last_1h_close_seen is None or close_1h > last_1h_close_seen
+            settings = store.get_strategy_settings()
+            bias_tf = settings["active_bias_tf"]
+            trigger_tf = settings["active_trigger_tf"]
 
-            candles_1h = fetch_candles(
-                cfg["data"]["coin"], cfg["data"]["trigger_interval"],
-                _ms(now - LOOKBACK_1H), _ms(now),
+            combo = (bias_tf, trigger_tf)
+            if active_combo_seen is not None and combo != active_combo_seen:
+                logger.info("timeframe combo changed %s -> %s (mode=%s) — resetting close marker",
+                            active_combo_seen, combo, settings["mode"])
+                last_trigger_open_seen = None
+            active_combo_seen = combo
+
+            candles_trigger = fetch_candles(
+                cfg["data"]["coin"], trigger_tf,
+                _ms(now) - lookback_ms(trigger_tf), _ms(now),
             )
-            if candles_1h:
+            if candles_trigger:
                 last_data_timestamp = datetime.fromtimestamp(
-                    candles_1h[-1].close_time_ms / 1000, tz=timezone.utc
+                    candles_trigger[-1].close_time_ms / 1000, tz=timezone.utc
                 )
 
-            if new_1h_close and candles_1h:
-                candles_4h = fetch_candles(
-                    cfg["data"]["coin"], cfg["data"]["bias_interval"],
-                    _ms(now - LOOKBACK_4H), _ms(now),
+            newest_open = newest_closed_open_time(candles_trigger)
+            new_trigger_close = newest_open is not None and newest_open != last_trigger_open_seen
+
+            if new_trigger_close:
+                last_trigger_open_seen = newest_open
+                candles_bias = fetch_candles(
+                    cfg["data"]["coin"], bias_tf,
+                    _ms(now) - lookback_ms(bias_tf), _ms(now),
                 )
-                last_1h_close_seen = close_1h
-                if candles_4h:
+                if candles_bias:
                     bias_result = compute_bias(
-                        candles_4h,
+                        candles_bias,
                         fractal_width=cfg["strategy"]["fractal_width"],
                         sr_lookback=cfg["strategy"]["sr_lookback"],
                     )
                     current_bias_label = bias_result.bias.value
-                    latest_indicators = {"bias": current_bias_label, "bias_reason": bias_result.reason}
+                    latest_indicators = {
+                        "bias": current_bias_label, "bias_reason": bias_result.reason,
+                        "mode": settings["mode"], "bias_tf": bias_tf, "trigger_tf": trigger_tf,
+                    }
 
-                    result = evaluate_signal(candles_4h, candles_1h, now=now)
+                    result = evaluate_signal(candles_bias, candles_trigger, now=now)
                     if isinstance(result, Signal):
                         _handle_signal(result, cfg, store, execution, telegram, ledger,
-                                       breaker, peak_equity, latest_indicators)
+                                       breaker, peak_equity, latest_indicators, settings)
                     elif isinstance(result, SuppressedSignal):
                         logger.info("Signal suppressed: %s", result.reason)
 
-            if candles_1h:
-                current_price = candles_1h[-1].close
+            if candles_trigger:
+                current_price = candles_trigger[-1].close
                 for closed_pos in ledger.check_exits(current_price, now=now):
-                    telegram.send(format_exit_alert(closed_pos, ledger.daily_pnl()))
+                    telegram.send(decorate(format_exit_alert(closed_pos, ledger.daily_pnl()), settings))
                     logger.info("Paper exit: %s %.2fR", closed_pos.exit_reason, closed_pos.pnl_r)
 
                 peak_equity = max(peak_equity, ledger.equity)
                 breaker.update(ledger.current_equity())
                 if breaker.just_tripped():
                     halt_events_today += 1
-                    telegram.send(format_halt_alert(ledger.daily_pnl_pct()))
+                    telegram.send(decorate(format_halt_alert(ledger.daily_pnl_pct()), settings))
                     store.record_risk_event("circuit_breaker_trip", {
                         "daily_pnl_pct": ledger.daily_pnl_pct(), "equity": ledger.equity,
                     })
@@ -160,9 +192,10 @@ def run() -> None:
                 )
 
             logger.info(
-                "alive: state=%s bias=%s equity=%.2f open=%d daily_pnl=%.2f cb_halted=%s",
-                store.get_engine_state(), current_bias_label, ledger.equity,
-                len(ledger.open_positions), ledger.daily_pnl(), breaker.is_halted(),
+                "alive: state=%s mode=%s tf=%s/%s bias=%s equity=%.2f open=%d daily_pnl=%.2f cb_halted=%s",
+                store.get_engine_state(), settings["mode"], bias_tf, trigger_tf,
+                current_bias_label, ledger.equity, len(ledger.open_positions),
+                ledger.daily_pnl(), breaker.is_halted(),
             )
 
         except Exception:
@@ -170,7 +203,8 @@ def run() -> None:
             logger.warning("Error during evaluation loop", exc_info=True)
 
         if now.date() > last_day:
-            telegram.send(format_daily_summary(ledger.today_stats(), current_bias_label, halt_events_today))
+            telegram.send(decorate(
+                format_daily_summary(ledger.today_stats(), current_bias_label, halt_events_today), settings))
             ledger.start_new_day()
             breaker.reset_for_new_day(ledger.equity)
             halt_events_today = 0
@@ -178,7 +212,8 @@ def run() -> None:
             logger.info("Daily rollover complete; day_start_equity=%.2f", ledger.day_start_equity)
 
         if (now - last_heartbeat_at) >= timedelta(hours=cfg["telegram"]["heartbeat_interval_hours"]):
-            telegram.send(format_heartbeat(current_bias_label, last_data_timestamp, feed_errors_since_heartbeat))
+            telegram.send(decorate(
+                format_heartbeat(current_bias_label, last_data_timestamp, feed_errors_since_heartbeat), settings))
             last_heartbeat_at = now
             feed_errors_since_heartbeat = 0
 
@@ -186,7 +221,7 @@ def run() -> None:
 
 
 def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
-                   breaker, peak_equity: float, indicators: dict) -> None:
+                   breaker, peak_equity: float, indicators: dict, settings: dict) -> None:
     """Gate the signal; post Frame A; auto-take (dry-run) when ACTIVE."""
     engine_state = store.get_engine_state()
     params = store.get_risk_params()
@@ -214,14 +249,12 @@ def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
     alert_text = format_entry_signal(signal, decision.quantity, params["risk_pct"], risk_amount)
 
     if not decision.approved:
-        telegram.send(alert_text + "\n⚠️ GATE REJECTED:\n- " + "\n- ".join(decision.reasons),
+        telegram.send(decorate(alert_text + "\n⚠️ GATE REJECTED:\n- " + "\n- ".join(decision.reasons), settings),
                       reply_markup=frame_a_markup(signal_id))
         logger.info("Gate rejected signal: %s", decision.reasons)
         return
 
     if engine_state == "ACTIVE":
-        # Record-before-dispatch: the sink writes the intent row; a floor-
-        # guard block raises and aborts dispatch entirely.
         def sink(intent):
             ok = store.record_intent(
                 intent, dry_run=execution.dry_run,
@@ -245,16 +278,16 @@ def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
             ledger.open_hypothetical_position(
                 signal, risk_pct=params["risk_pct"], sz_decimals=cfg["risk"]["btc_sz_decimals"]
             )
-            telegram.send(alert_text + f"\n\U0001F916 AUTO-TAKEN (dry_run={result.dry_run}, "
-                                       f"attenuation {decision.attenuation_applied:.3f})")
+            telegram.send(decorate(alert_text + f"\n\U0001F916 AUTO-TAKEN (dry_run={result.dry_run}, "
+                                                f"attenuation {decision.attenuation_applied:.3f})", settings))
             logger.info("Signal auto-taken (dry_run=%s)", result.dry_run)
         except RuntimeError as exc:
-            telegram.send(alert_text + f"\n\U0001F6D1 BLOCKED BY FLOOR GUARD: {exc}")
+            telegram.send(decorate(alert_text + f"\n\U0001F6D1 BLOCKED BY FLOOR GUARD: {exc}", settings))
             logger.warning("Floor guard blocked auto-take: %s", exc)
         finally:
             execution._intent_sink = None
     else:
-        telegram.send(alert_text + f"\n(engine {engine_state} — manual Take/Skip below)",
+        telegram.send(decorate(alert_text + f"\n(engine {engine_state} — manual Take/Skip below)", settings),
                       reply_markup=frame_a_markup(signal_id))
         logger.info("Signal posted for manual take (engine %s)", engine_state)
 

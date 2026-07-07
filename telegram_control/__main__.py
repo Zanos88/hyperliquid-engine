@@ -103,6 +103,8 @@ def main() -> None:
     app.add_handler(CommandHandler("pause", wire(handlers.cmd_pause)))
     app.add_handler(CommandHandler("dashboard", wire(handlers.cmd_dashboard)))
     app.add_handler(CommandHandler("risk", wire(handlers.cmd_risk)))
+    app.add_handler(CommandHandler("settings", wire(handlers.cmd_settings)))
+    app.add_handler(CallbackQueryHandler(wire(handlers.cb_settings), pattern=r"^stg_"))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_take_signal), pattern=r"^take_"))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_skip_signal), pattern=r"^skip_"))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_close_fraction), pattern=r"^close_"))

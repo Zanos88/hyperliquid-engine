@@ -82,6 +82,29 @@ INSERT INTO risk_params (id, risk_pct, alpha, max_concurrent, updated_by)
     VALUES (1, 0.0075, 1.5, 1, 'schema-init')
     ON CONFLICT (id) DO NOTHING;
 
+-- Strategy mode + timeframe combos (set via /settings, read by the engine
+-- each cycle). Single row; changes logged to risk_events. Test timeframes
+-- are configurable but only via their own /settings submenu — never the
+-- production selection path.
+CREATE TABLE IF NOT EXISTS strategy_settings (
+    id INT PRIMARY KEY CHECK (id = 1),
+    mode TEXT NOT NULL CHECK (mode IN ('production', 'test')),
+    prod_bias_tf TEXT NOT NULL
+        CHECK (prod_bias_tf IN ('15m','30m','1h','4h','8h','12h','1d','3d','1w')),
+    prod_trigger_tf TEXT NOT NULL
+        CHECK (prod_trigger_tf IN ('15m','30m','1h','4h','8h','12h','1d','3d','1w')),
+    test_bias_tf TEXT NOT NULL
+        CHECK (test_bias_tf IN ('1m','3m','5m','15m','30m','1h')),
+    test_trigger_tf TEXT NOT NULL
+        CHECK (test_trigger_tf IN ('1m','3m','5m','15m','30m','1h')),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT
+);
+INSERT INTO strategy_settings (id, mode, prod_bias_tf, prod_trigger_tf,
+                               test_bias_tf, test_trigger_tf, updated_by)
+    VALUES (1, 'production', '4h', '1h', '5m', '1m', 'schema-init')
+    ON CONFLICT (id) DO NOTHING;
+
 -- Pending signal frames (Frame A): the engine writes a row + posts the
 -- Telegram frame; the control-plane process resolves the row when a
 -- button is tapped. Cross-process by design.
