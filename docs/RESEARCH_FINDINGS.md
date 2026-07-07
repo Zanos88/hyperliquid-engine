@@ -1,3 +1,81 @@
+# Research Findings
+
+## Revision 3 — V2 (Stage 2) live-API verification, 7 July 2026
+
+Verification performed READ-ONLY with the real live API key (injected via
+`railway run`; zero write calls — see `scripts/verify_propr_readonly.py`,
+which contains no POST/PUT/DELETE capability). Vendored SDK:
+`execution/vendor/propr_sdk.py` from github.com/XBorgLabs/propr-docs
+@ `fee880982ce3cf36f330fb07a3a9be57ec4dd904`.
+
+### Confirmed against the live API
+- **Auth works**: key authenticates on live REST and WS
+  (`wss://api.propr.xyz/ws` → `{"type":"connected","data":{"userId":…}}`).
+- **C2 tier check PASSED** — `GET /challenges` (live): **Gold 1-Step
+  Classic**, `initialBalance "100000"` USDC, `profitTargetPercent "10"`,
+  `maxDailyLossPercent "3"`, `maxDrawdownPercent "6"`,
+  **`drawdownType "static"`** — every Section 2 figure in the V2 report
+  matches, including the static (never-trailing) floor.
+- Base URLs healthy: live `api.propr.xyz/v1`; beta `api.beta.propr.xyz/v1`
+  (documented) AND `api.beta-load.propr.xyz/v1` (additional working
+  host); `app.beta-load.propr.xyz` is the app frontend, not an API base.
+- 16 challenge tiers exist (Classic 1/2-step + Turbo variants) — ours is
+  Gold 1-Step Classic, challengeId `urn:prp-challenge:Qz6XNCwYgYme`.
+
+### Documentation drift found (docs → live behavior)
+1. **`GET /challenges` now requires auth** — api.md documents it as
+   no-auth; live and beta both return `10002 unauthorized` without a key.
+2. **`/leverage-limits/effective` response shape changed** — live returns
+   per-asset-class `defaults` (`{"crypto":2,"equity":4,"pre_ipo":4,
+   "index":5,"commodity":5,"fx":25}`) instead of the documented scalar
+   `defaultMax`. The vendored SDK's `max_leverage()` fallback assumes the
+   old shape — our wrapper must handle both. BTC override = 5x confirmed.
+
+### Blocked until the challenge is purchased (no active attempt exists)
+- `GET /challenge-attempts?status=active` returned **0 attempts** — the
+  $100K challenge is not yet purchased. Therefore unverifiable live, and
+  taken from the SDK docstring only until purchase:
+  - `GET /accounts/{accountId}` field names/values — `balance`,
+    `availableBalance`, `totalUnrealizedPnl`, `marginBalance`, margin
+    fields, `highWaterMark`; equity = balance + totalUnrealizedPnl +
+    isolatedPositionMargin.
+  - `highWaterMark` semantics: docstring says "Highest **balance**
+    achieved" — note this is balance, not equity; flag for the
+    attenuation formula's `peak_equity` input at purchase time.
+  - `breakEvenPrice` on positions (needs an open position to observe).
+- **Beta env: the live key does NOT authenticate on beta** (`401` on
+  `/challenge-attempts`). Beta kill-sequence verification therefore needs
+  a separate beta account/key — re-flagged as an open item (the beta
+  URLs being reachable does not make the key work there).
+
+### Order-mechanics facts locked in from api.md/quickstart (for Phase 1)
+- Batch rules: top-level `orderGroupId` (ULID) required when
+  `orders.length > 1`; only ONE entry order (`market`/`limit`) per
+  request; conditional orders need a `positionId` OR must share a group
+  with an entry order.
+- Cancel returns **201** (treat 200/201 as success); 400 = already
+  filled/cancelled (safe to ignore). **No server-side bulk cancel** — the
+  SDK's `cancel_all_orders()` enumerates open orders and cancels each;
+  the kill sequence inherits this loop.
+- BTC min quantity **0.001**; all monetary values are strings; use
+  Decimal, never float.
+- `timeInForce`: GTC/IOC/FOK/**GTX (post-only)** — post-only exists, but
+  maker fee = taker fee = 0.075%, so no rebate benefit (updates report
+  C5: mechanism verified, economics moot).
+- `reduceOnly: true` mandatory on every closing/reducing order (a bare
+  sell on a long OPENS A SHORT). `closePosition: true` + reduceOnly to
+  close fully.
+- Positions merge per asset/side; fully-closed positions may linger with
+  `quantity "0"` — filter; track bot exposure internally (fills, not
+  positions).
+- REST `markPrice` is stale — use WS `position.updated` for live marks.
+- WS event set (richer than the report): order.created/updated/cancelled/
+  triggered/filled/partially_filled, position.opened/updated/closed/
+  liquidated, **position.take_profit.hit**, **position.stop_loss.hit**,
+  trade.created, account.updated. Server pings every 20s.
+
+---
+
 # Research Findings (Revision 2 — completed 6 July 2026)
 
 This supersedes the Revision 1 findings doc. Research conducted 6 July
