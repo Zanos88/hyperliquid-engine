@@ -154,12 +154,21 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
     except Exception:
         mode_line = "Mode: (settings unavailable)"
     ind_line = _indicator_summary_safe(services.store)
+    try:
+        ms = services.store.get_market_state()
+        levels_line = (f"Bias: {ms['bias']} | last ${ms['last_price']:,.2f} | "
+                       f"long stop/target: "
+                       f"{'$%s / $%s' % (format(ms['long_stop'], ',.0f'), format(ms['long_target'], ',.0f')) if ms['long_stop'] and ms['long_target'] else 'no valid structure'}"
+                       ) if ms else None
+    except Exception:
+        levels_line = None
 
     lines = [
         "\U0001F4CB DASHBOARD",
         f"Engine: {state}",
         mode_line,
         *( [ind_line] if ind_line else [] ),
+        *( [levels_line] if levels_line else [] ),
         f"Equity: ${equity:,.2f}",
         f"Daily P&L: ${daily_pnl:+,.2f} ({daily_pnl / day_start:+.2%})",
         f"Distance to daily floor (${daily_floor:,.0f}): ${equity - daily_floor:,.2f}",
@@ -379,6 +388,48 @@ async def cb_settings(update, context, services: ControlServices) -> None:
         return
 
     await _reply(update, _settings_text(s, services.store), reply_markup=settings_menu_markup(s))
+
+
+async def cmd_testalert(update, context, services: ControlServices) -> None:
+    """Render synthetic entry + exit alerts through the REAL formatters so
+    formats can be reviewed without waiting for live confluence. Clearly
+    labeled; no ledger/DB writes; nothing dispatched."""
+    if _denied(update, "/testalert"):
+        return
+    from datetime import datetime, timezone
+
+    from alerts.formats import format_entry_signal, format_exit_alert
+    from ledger.tracker import ClosedPosition
+
+    sample_readings = {
+        "bias_sr": {"enabled": True, "vote": "LONG", "bias": "BULLISH",
+                    "reason": "price 61,780.00 above 0.618 retrace 61,320.00 and holding support"},
+        "fisher": {"enabled": True, "vote": "LONG", "cross": "bullish", "value": 1.24},
+        "obv": {"enabled": True, "vote": "LONG", "state": "rising", "value": 15234.5},
+        "rsi": {"enabled": False, "vote": "LONG", "value": 57.3},
+        "ichimoku": {"enabled": False, "vote": "NONE", "tenkan": 61650.0, "kijun": 61400.0,
+                     "senkou_a": 61200.0, "senkou_b": 60900.0, "variant": "standard"},
+    }
+    ctx = {"trigger_tf": "1h", "bias_tf": "4h", "readings": sample_readings,
+           "equity": 100_000.0, "day_start_equity": 100_000.0,
+           "open_positions": 0, "position_line": "none", "attenuation": 1.0}
+    now = datetime.now(timezone.utc)
+    sig = Signal(direction=SignalDirection.LONG, entry=61_780.0, stop=60_900.0,
+                 target=63_600.0, reward_risk=(63_600 - 61_780) / (61_780 - 60_900),
+                 timestamp=now, bias_reason=sample_readings["bias_sr"]["reason"],
+                 trigger_reason="confluence: bias_sr:LONG + fisher:LONG + obv:LONG")
+    entry_text = format_entry_signal(sig, 0.85227, 0.0075, 750.0, context=ctx)
+
+    closed = ClosedPosition(signal=sig, quantity=0.85227, opened_at=now, closed_at=now,
+                            exit_price=63_600.0, exit_reason="target",
+                            pnl=1_551.13, pnl_r=2.07)
+    exit_text = format_exit_alert(closed, 1_551.13,
+                                  context={**ctx, "equity": 101_551.13})
+
+    banner = "⚠️ SYNTHETIC — format preview only, not a real signal\n\n"
+    await _reply(update, banner + entry_text)
+    if getattr(update, "message", None) is not None:
+        await update.message.reply_text(banner + exit_text)
 
 
 def _safe_positions(services: ControlServices, base: str) -> list[dict]:

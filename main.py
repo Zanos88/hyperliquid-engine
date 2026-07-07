@@ -104,6 +104,31 @@ def run() -> None:
     last_trigger_open_seen: int | None = None
     active_combo_seen: tuple[str, str] | None = None
     prev_alignment: str | None = None  # edge-trigger memory for state-based confluence
+    latest_levels: dict = {}
+    latest_price: float | None = None
+
+    def position_line() -> str:
+        if not ledger.open_positions:
+            return "none"
+        p = ledger.open_positions[0]
+        s = p.signal
+        upnl = ((latest_price - s.entry) if s.direction.value == "LONG" else (s.entry - latest_price)) * p.quantity \
+            if latest_price else 0.0
+        return (f"{s.direction.value} {p.quantity:.5f} BTC @ ${s.entry:,.2f} "
+                f"(uPnL ${upnl:+,.2f}, paper)")
+
+    def alert_context(readings: dict | None = None, settings: dict | None = None) -> dict:
+        """Everything the structured formatters surface — assembled from
+        state the engine already holds; nothing recomputed."""
+        s = settings or {}
+        return {
+            "trigger_tf": s.get("active_trigger_tf"), "bias_tf": s.get("active_bias_tf"),
+            "readings": readings or latest_indicators.get("readings"),
+            "equity": ledger.equity, "day_start_equity": ledger.day_start_equity,
+            "open_positions": len(ledger.open_positions),
+            "position_line": position_line(),
+            "last_price": latest_price, "levels": latest_levels,
+        }
     last_heartbeat_at = datetime.now(timezone.utc)
     last_day = datetime.now(timezone.utc).date()
     feed_errors_since_heartbeat = 0
@@ -116,7 +141,9 @@ def run() -> None:
     logger.info("engine starting (Stage 2, DRY-RUN execution; state=%s mode=%s tf=%s/%s)",
                 store.get_engine_state(), settings["mode"],
                 settings["active_bias_tf"], settings["active_trigger_tf"])
-    sent = telegram.send(decorate(format_heartbeat(current_bias_label, last_data_timestamp, 0), settings))
+    sent = telegram.send(decorate(
+        format_heartbeat(current_bias_label, last_data_timestamp, 0,
+                         context=alert_context(settings=settings)), settings))
     logger.info("startup heartbeat sent=%s", sent)
 
     while True:
@@ -164,6 +191,8 @@ def run() -> None:
                     store.record_market_state(
                         last_price=candles_trigger[-1].close, bias=current_bias_label, **levels,
                     )
+                    latest_levels = levels
+                    latest_price = candles_trigger[-1].close
 
                     ind_cfg = store.get_indicator_config()
                     result, readings = evaluate_signal(
@@ -197,15 +226,20 @@ def run() -> None:
 
             if candles_trigger:
                 current_price = candles_trigger[-1].close
+                latest_price = current_price
                 for closed_pos in ledger.check_exits(current_price, now=now):
-                    telegram.send(decorate(format_exit_alert(closed_pos, ledger.daily_pnl()), settings))
+                    telegram.send(decorate(
+                        format_exit_alert(closed_pos, ledger.daily_pnl(),
+                                          context=alert_context(settings=settings)), settings))
                     logger.info("Paper exit: %s %.2fR", closed_pos.exit_reason, closed_pos.pnl_r)
 
                 peak_equity = max(peak_equity, ledger.equity)
                 breaker.update(ledger.current_equity())
                 if breaker.just_tripped():
                     halt_events_today += 1
-                    telegram.send(decorate(format_halt_alert(ledger.daily_pnl_pct()), settings))
+                    telegram.send(decorate(
+                        format_halt_alert(ledger.daily_pnl_pct(),
+                                          context=alert_context(settings=settings)), settings))
                     store.record_risk_event("circuit_breaker_trip", {
                         "daily_pnl_pct": ledger.daily_pnl_pct(), "equity": ledger.equity,
                     })
@@ -238,7 +272,8 @@ def run() -> None:
 
         if (now - last_heartbeat_at) >= timedelta(hours=cfg["telegram"]["heartbeat_interval_hours"]):
             telegram.send(decorate(
-                format_heartbeat(current_bias_label, last_data_timestamp, feed_errors_since_heartbeat), settings))
+                format_heartbeat(current_bias_label, last_data_timestamp, feed_errors_since_heartbeat,
+                                 context=alert_context(settings=settings)), settings))
             last_heartbeat_at = now
             feed_errors_since_heartbeat = 0
 
@@ -272,16 +307,17 @@ def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
         indicators_snapshot=indicators,  # full readings — the backtest-review record
     )
     risk_amount = abs(signal.entry - signal.stop) * decision.quantity
-    readings = indicators.get("readings", {})
-    ind_line = " | ".join(
-        f"{n}:{r['vote']}" + (f"({r['value']:.1f})" if isinstance(r.get("value"), float) else "")
-        for n, r in readings.items() if r["enabled"]
-    )
-    off = [n for n, r in readings.items() if not r["enabled"]]
-    if off:
-        ind_line += "  (off: " + ", ".join(off) + ")"
-    alert_text = (format_entry_signal(signal, decision.quantity, params["risk_pct"], risk_amount)
-                  + ("\nIndicators: " + ind_line if ind_line else ""))
+    entry_ctx = {
+        "trigger_tf": indicators.get("trigger_tf"), "bias_tf": indicators.get("bias_tf"),
+        "readings": indicators.get("readings"),
+        "equity": ledger.equity, "day_start_equity": ledger.day_start_equity,
+        "open_positions": len(ledger.open_positions),
+        "position_line": "none" if not ledger.open_positions
+        else f"{len(ledger.open_positions)} open (paper)",
+        "attenuation": decision.attenuation_applied,
+    }
+    alert_text = format_entry_signal(signal, decision.quantity, params["risk_pct"],
+                                     risk_amount, context=entry_ctx)
 
     if not decision.approved:
         telegram.send(decorate(alert_text + "\n⚠️ GATE REJECTED:\n- " + "\n- ".join(decision.reasons), settings),

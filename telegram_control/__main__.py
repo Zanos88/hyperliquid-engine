@@ -119,6 +119,7 @@ def main() -> None:
     app.add_handler(CommandHandler("dashboard", wire(handlers.cmd_dashboard)))
     app.add_handler(CommandHandler("risk", wire(handlers.cmd_risk)))
     app.add_handler(CommandHandler("settings", wire(handlers.cmd_settings)))
+    app.add_handler(CommandHandler("testalert", wire(handlers.cmd_testalert)))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_settings), pattern=r"^stg_"))
     app.add_handler(CommandHandler("menu", wire(trade_panel.cmd_menu)))
     app.add_handler(CommandHandler("start", wire(trade_panel.cmd_menu)))
@@ -132,7 +133,8 @@ def main() -> None:
             ("menu", "Main menu + persistent keyboard"),
             ("trade", "Manual trade panel"),
             ("dashboard", "Equity, floors, positions"),
-            ("settings", "Mode + timeframes"),
+            ("settings", "Mode + timeframes + indicators"),
+            ("testalert", "Preview alert formats (synthetic)"),
             ("risk", "Risk parameters"),
             ("run", "Activate engine"),
             ("pause", "Pause new entries"),
