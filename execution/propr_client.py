@@ -55,6 +55,7 @@ class OrderIntent:
     reduce_only: bool = False
     close_position: bool = False
     order_group_id: str | None = None
+    position_id: str | None = None  # required for standalone conditionals (api.md batch rules)
     purpose: str = ""  # human tag: "entry", "stop_loss", "take_profit", "kill_close", ...
     # Risk context, set on ENTRY intents only — consumed by the Postgres
     # floor-guard trigger (worst-case = |entry - stop| * quantity).
@@ -177,6 +178,8 @@ class ProprExecutionService:
             order["price"] = intent.price
         if intent.trigger_price is not None:
             order["triggerPrice"] = intent.trigger_price
+        if intent.position_id is not None:
+            order["positionId"] = intent.position_id
         return order
 
     def _dispatch(self, intents: list[OrderIntent]) -> DispatchResult:
@@ -251,6 +254,26 @@ class ProprExecutionService:
             position_side=direction, order_type="market", quantity=qty_str,
             time_in_force="IOC", reduce_only=True, close_position=full_close,
             purpose=purpose,
+        )
+        return self._dispatch([intent])
+
+    def move_stop_to(self, position: dict, trigger_price: str) -> DispatchResult:
+        """Replace the position's stop: cancel existing stop_market orders
+        linked to it, then place a fresh reduceOnly stop at trigger_price
+        (standalone conditional with positionId — verified valid shape)."""
+        position_id = position.get("positionId")
+        for order in self.get_open_orders(base=position.get("base", "BTC")):
+            if order.get("positionId") == position_id and order.get("type") == "stop_market":
+                self.cancel_order(order["orderId"])
+
+        direction = position["positionSide"]
+        exit_side = "sell" if direction == "long" else "buy"
+        intent = OrderIntent(
+            intent_id=str(ULID()), asset=position.get("base", "BTC"), side=exit_side,
+            position_side=direction, order_type="stop_market",
+            quantity=str(position["quantity"]), time_in_force="GTC",
+            trigger_price=trigger_price, reduce_only=True,
+            position_id=position_id, purpose="stop_move",
         )
         return self._dispatch([intent])
 

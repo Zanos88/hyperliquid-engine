@@ -68,6 +68,37 @@ INSERT INTO engine_state (id, state, updated_by)
     VALUES (1, 'PAUSED', 'schema-init')
     ON CONFLICT (id) DO NOTHING;
 
+-- Runtime-adjustable risk parameters (set via /risk, read by the engine
+-- each cycle). Single row; every change is also logged to risk_events.
+CREATE TABLE IF NOT EXISTS risk_params (
+    id INT PRIMARY KEY CHECK (id = 1),
+    risk_pct NUMERIC NOT NULL CHECK (risk_pct >= 0.0025 AND risk_pct <= 0.01),
+    alpha NUMERIC NOT NULL CHECK (alpha >= 1.0),
+    max_concurrent INT NOT NULL CHECK (max_concurrent >= 1),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT
+);
+INSERT INTO risk_params (id, risk_pct, alpha, max_concurrent, updated_by)
+    VALUES (1, 0.0075, 1.5, 1, 'schema-init')
+    ON CONFLICT (id) DO NOTHING;
+
+-- Pending signal frames (Frame A): the engine writes a row + posts the
+-- Telegram frame; the control-plane process resolves the row when a
+-- button is tapped. Cross-process by design.
+CREATE TABLE IF NOT EXISTS pending_signals (
+    signal_id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    direction TEXT NOT NULL CHECK (direction IN ('LONG', 'SHORT')),
+    entry NUMERIC NOT NULL,
+    stop NUMERIC NOT NULL,
+    target NUMERIC NOT NULL,
+    reward_risk NUMERIC NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'taken', 'skipped', 'expired')),
+    resolved_at TIMESTAMPTZ,
+    resolved_by TEXT
+);
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard

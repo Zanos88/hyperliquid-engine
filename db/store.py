@@ -127,6 +127,66 @@ class TelemetryStore:
                 (event_type, json.dumps(detail) if detail else None),
             )
 
+    # ── runtime risk params (set via /risk, read by the engine) ──
+
+    def get_risk_params(self) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT risk_pct, alpha, max_concurrent FROM risk_params WHERE id = 1"
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("risk_params row missing — run apply_schema()")
+        return {"risk_pct": float(row[0]), "alpha": float(row[1]), "max_concurrent": int(row[2])}
+
+    def set_risk_param(self, name: str, value: float, updated_by: str) -> dict:
+        """Update one param (DB CHECK constraints enforce bounds). Logs
+        old->new to risk_events. Returns the new params dict."""
+        if name not in ("risk_pct", "alpha", "max_concurrent"):
+            raise ValueError(f"unknown risk param {name}")
+        old = self.get_risk_params()
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE risk_params SET {name} = %s, updated_at = now(), updated_by = %s WHERE id = 1",
+                (value, updated_by),
+            )
+        new = self.get_risk_params()
+        self.record_risk_event("risk_param_change", {
+            "param": name, "old": old[name], "new": new[name], "by": updated_by,
+        })
+        return new
+
+    # ── pending signal frames (Frame A, cross-process) ──
+
+    def create_pending_signal(self, signal_id: str, direction: str, entry: float,
+                              stop: float, target: float, reward_risk: float) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO pending_signals (signal_id, direction, entry, stop, target, reward_risk)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (signal_id, direction, entry, stop, target, reward_risk),
+            )
+
+    def get_pending_signal(self, signal_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT signal_id, direction, entry, stop, target, reward_risk, status
+                   FROM pending_signals WHERE signal_id = %s""",
+                (signal_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"signal_id": row[0], "direction": row[1], "entry": float(row[2]),
+                "stop": float(row[3]), "target": float(row[4]),
+                "reward_risk": float(row[5]), "status": row[6]}
+
+    def resolve_pending_signal(self, signal_id: str, status: str, resolved_by: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE pending_signals SET status = %s, resolved_at = now(), resolved_by = %s
+                   WHERE signal_id = %s AND status = 'pending'""",
+                (status, resolved_by, signal_id),
+            )
+
     # ── engine state (cross-process) ──
 
     def get_engine_state(self) -> str:
