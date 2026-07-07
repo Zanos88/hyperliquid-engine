@@ -56,6 +56,10 @@ class OrderIntent:
     close_position: bool = False
     order_group_id: str | None = None
     purpose: str = ""  # human tag: "entry", "stop_loss", "take_profit", "kill_close", ...
+    # Risk context, set on ENTRY intents only — consumed by the Postgres
+    # floor-guard trigger (worst-case = |entry - stop| * quantity).
+    risk_entry_price: str | None = None
+    risk_stop_price: str | None = None
 
 
 @dataclass(frozen=True)
@@ -195,10 +199,16 @@ class ProprExecutionService:
         quantity: str,
         stop_trigger: str,
         target_trigger: str,
+        entry_ref_price: str | None = None,
     ) -> DispatchResult:
         """Market entry + stop_market SL + take_profit_market TP in one
         batch under a shared orderGroupId (verified batch rules: one entry
-        per request; conditionals valid when grouped with the entry)."""
+        per request; conditionals valid when grouped with the entry).
+
+        entry_ref_price: the signal's entry reference (last close) — market
+        entries have no limit price, so the floor-guard trigger uses this
+        for its worst-case computation.
+        """
         if Decimal(quantity) < BTC_MIN_QUANTITY:
             raise ValueError(f"quantity {quantity} below venue minimum {BTC_MIN_QUANTITY}")
 
@@ -211,6 +221,7 @@ class ProprExecutionService:
                 intent_id=str(ULID()), asset="BTC", side=entry_side, position_side=direction,
                 order_type="market", quantity=quantity, time_in_force="IOC",
                 order_group_id=group_id, purpose="entry",
+                risk_entry_price=entry_ref_price, risk_stop_price=stop_trigger,
             ),
             OrderIntent(
                 intent_id=str(ULID()), asset="BTC", side=exit_side, position_side=direction,

@@ -6,3 +6,4 @@ python-ulid>=2.0
 websockets>=12.0
 python-dotenv>=1.0
 typing_extensions>=4.0
+psycopg[binary]>=3.1
