@@ -212,6 +212,7 @@ async def cb_trade(update, context, services: ControlServices) -> None:
     """All trd_* callbacks."""
     if _denied(update, "trade"):
         return
+    await _ack(update)
     data = update.callback_query.data
 
     if data == "trd_refresh" or data == "trd_asset_BTC":
@@ -343,6 +344,7 @@ async def cb_menu(update, context, services: ControlServices) -> None:
     """All menu_* callbacks — routes into the existing command handlers."""
     if _denied(update, "menu"):
         return
+    await _ack(update)
     from telegram_control import handlers
     data = update.callback_query.data
 

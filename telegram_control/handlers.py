@@ -64,12 +64,26 @@ def _to_ptb_markup(reply_markup: dict | None):
         return reply_markup  # test environments without PTB semantics
 
 
+async def _ack(update) -> None:
+    """Acknowledge a callback IMMEDIATELY (before any DB work). Telegram
+    expires unanswered callback queries within seconds — slow store paths
+    were blowing that window ('Query is too old'). Stale/duplicate answers
+    are tolerated: the message edit still lands."""
+    cq = getattr(update, "callback_query", None)
+    if cq is None:
+        return
+    try:
+        await cq.answer()
+    except Exception:
+        logger.debug("callback ack failed (stale/duplicate) — continuing with edit")
+
+
 async def _reply(update, text: str, reply_markup: dict | None = None) -> None:
     markup = _to_ptb_markup(reply_markup)
     if getattr(update, "message", None) is not None:
         await update.message.reply_text(text, reply_markup=markup)
     elif getattr(update, "callback_query", None) is not None:
-        await update.callback_query.answer()
+        await _ack(update)
         await update.callback_query.edit_message_text(text, reply_markup=markup)
 
 
@@ -314,6 +328,7 @@ async def cb_settings(update, context, services: ControlServices) -> None:
     """All stg_* callbacks: mode switches, submenu opens, timeframe picks."""
     if _denied(update, "settings"):
         return
+    await _ack(update)  # ack before any DB round-trips
     data = update.callback_query.data  # stg_...
     who = f"telegram:{_user_id(update)}"
     parts = data.split("_", 2)  # ["stg", verb, rest]
@@ -383,6 +398,7 @@ async def cb_take_signal(update, context, services: ControlServices) -> None:
     """callback_data: take_<riskpct>_<signal_id>  e.g. take_0.75_01ABC..."""
     if _denied(update, "take"):
         return
+    await _ack(update)
     _, pct_str, signal_id = update.callback_query.data.split("_", 2)
     risk_pct = float(pct_str) / 100
 
@@ -427,6 +443,7 @@ async def cb_take_signal(update, context, services: ControlServices) -> None:
 async def cb_skip_signal(update, context, services: ControlServices) -> None:
     if _denied(update, "skip"):
         return
+    await _ack(update)
     _, signal_id = update.callback_query.data.split("_", 1)
     services.store.resolve_pending_signal(signal_id, "skipped", resolved_by=f"telegram:{_user_id(update)}")
     await _reply(update, "⏭️ Signal skipped.")
@@ -437,6 +454,7 @@ async def cb_close_fraction(update, context, services: ControlServices) -> None:
     required (the gate guards entries; closes always reduce exposure)."""
     if _denied(update, "close"):
         return
+    await _ack(update)
     _, pct_str, base = update.callback_query.data.split("_", 2)
     fraction = Decimal(pct_str) / Decimal(100)
 
@@ -453,6 +471,7 @@ async def cb_sl_breakeven(update, context, services: ControlServices) -> None:
     (fee-inclusive, verified field in api.md; better than raw entry)."""
     if _denied(update, "slbe"):
         return
+    await _ack(update)
     _, base = update.callback_query.data.split("_", 1)
     positions = _safe_positions(services, base)
     if not positions:

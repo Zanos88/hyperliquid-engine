@@ -11,6 +11,7 @@ in a new transaction, and the caller must refuse to dispatch.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -39,13 +40,23 @@ def resolve_database_url() -> str:
 class TelemetryStore:
     def __init__(self, database_url: str | None = None):
         self.database_url = database_url or resolve_database_url()
+        self._conn: psycopg.Connection | None = None
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self.database_url, autocommit=True)
+        """Reuse one autocommit connection per store (per process).
+
+        A fresh TLS connection through the public proxy costs seconds;
+        multi-call handler paths were stacking those and blowing
+        Telegram's callback-answer window. Reconnects transparently if
+        the cached connection has died.
+        """
+        if self._conn is None or self._conn.closed or self._conn.broken:
+            self._conn = psycopg.connect(self.database_url, autocommit=True)
+        return self._conn
 
     def apply_schema(self) -> None:
         sql = SCHEMA_PATH.read_text(encoding="utf-8")
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(sql)
         logger.info("telemetry schema applied")
 
@@ -61,7 +72,7 @@ class TelemetryStore:
         symbol: str = "BTC",
     ) -> None:
         daily_floor = day_start_equity - 3000
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO portfolio_telemetry
                    (symbol, equity, balance, unrealized_pnl, day_start_equity,
@@ -86,7 +97,7 @@ class TelemetryStore:
         risk event) if the floor-guard trigger blocks it — caller must not
         dispatch in that case."""
         try:
-            with self._connect() as conn:
+            with contextlib.nullcontext(self._connect()) as conn:
                 conn.execute(
                     """INSERT INTO trade_execution_ledger
                        (symbol, intent_id, order_group_id, purpose, side, position_side,
@@ -112,7 +123,7 @@ class TelemetryStore:
             return False
 
     def mark_dispatched(self, intent_id: str) -> None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 "UPDATE trade_execution_ledger SET dispatched = true WHERE intent_id = %s",
                 (intent_id,),
@@ -121,7 +132,7 @@ class TelemetryStore:
     # ── risk events ──
 
     def record_risk_event(self, event_type: str, detail: dict | None = None) -> None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 "INSERT INTO risk_events (event_type, detail) VALUES (%s, %s)",
                 (event_type, json.dumps(detail) if detail else None),
@@ -130,7 +141,7 @@ class TelemetryStore:
     # ── runtime risk params (set via /risk, read by the engine) ──
 
     def get_risk_params(self) -> dict:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 "SELECT risk_pct, alpha, max_concurrent FROM risk_params WHERE id = 1"
             ).fetchone()
@@ -144,7 +155,7 @@ class TelemetryStore:
         if name not in ("risk_pct", "alpha", "max_concurrent"):
             raise ValueError(f"unknown risk param {name}")
         old = self.get_risk_params()
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 f"UPDATE risk_params SET {name} = %s, updated_at = now(), updated_by = %s WHERE id = 1",
                 (value, updated_by),
@@ -158,7 +169,7 @@ class TelemetryStore:
     # ── indicator toggles (set via /settings -> Indicators) ──
 
     def get_indicator_config(self) -> dict:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 """SELECT bias_sr, fisher, obv, rsi, ichimoku, ichimoku_variant
                    FROM indicator_config WHERE id = 1"""
@@ -177,7 +188,7 @@ class TelemetryStore:
         candidate = {**old, name: enabled}
         if not any(candidate[n] for n in INDICATOR_NAMES):
             raise ValueError("at least one indicator must remain enabled")
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 f"UPDATE indicator_config SET {name} = %s, updated_at = now(), updated_by = %s WHERE id = 1",
                 (enabled, updated_by),
@@ -192,7 +203,7 @@ class TelemetryStore:
         if variant not in ("standard", "crypto"):
             raise ValueError(f"ichimoku variant must be standard or crypto, got {variant!r}")
         old = self.get_indicator_config()
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 "UPDATE indicator_config SET ichimoku_variant = %s, updated_at = now(), updated_by = %s WHERE id = 1",
                 (variant, updated_by),
@@ -210,7 +221,7 @@ class TelemetryStore:
                             long_stop: float | None, long_target: float | None,
                             short_stop: float | None, short_target: float | None,
                             symbol: str = "BTC") -> None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO market_state (id, ts, symbol, last_price, bias,
                                              long_stop, long_target, short_stop, short_target)
@@ -224,7 +235,7 @@ class TelemetryStore:
             )
 
     def get_market_state(self) -> dict | None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 """SELECT ts, symbol, last_price, bias, long_stop, long_target,
                           short_stop, short_target FROM market_state WHERE id = 1"""
@@ -241,7 +252,7 @@ class TelemetryStore:
     # ── strategy settings (set via /settings, read by the engine) ──
 
     def get_strategy_settings(self) -> dict:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 """SELECT mode, prod_bias_tf, prod_trigger_tf, test_bias_tf, test_trigger_tf
                    FROM strategy_settings WHERE id = 1"""
@@ -275,7 +286,7 @@ class TelemetryStore:
         elif value not in ("production", "test"):
             raise ValueError(f"mode must be production or test, got {value!r}")
 
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 f"UPDATE strategy_settings SET {name} = %s, updated_at = now(), updated_by = %s WHERE id = 1",
                 (value, updated_by),
@@ -291,7 +302,7 @@ class TelemetryStore:
     def create_pending_signal(self, signal_id: str, direction: str, entry: float,
                               stop: float, target: float, reward_risk: float,
                               indicators_snapshot: dict | None = None) -> None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO pending_signals (signal_id, direction, entry, stop, target,
                                                 reward_risk, indicators_snapshot)
@@ -301,7 +312,7 @@ class TelemetryStore:
             )
 
     def get_pending_signal(self, signal_id: str) -> dict | None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 """SELECT signal_id, direction, entry, stop, target, reward_risk, status
                    FROM pending_signals WHERE signal_id = %s""",
@@ -314,7 +325,7 @@ class TelemetryStore:
                 "reward_risk": float(row[5]), "status": row[6]}
 
     def resolve_pending_signal(self, signal_id: str, status: str, resolved_by: str) -> None:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """UPDATE pending_signals SET status = %s, resolved_at = now(), resolved_by = %s
                    WHERE signal_id = %s AND status = 'pending'""",
@@ -324,7 +335,7 @@ class TelemetryStore:
     # ── engine state (cross-process) ──
 
     def get_engine_state(self) -> str:
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute("SELECT state FROM engine_state WHERE id = 1").fetchone()
         if row is None:
             raise RuntimeError("engine_state row missing — run apply_schema()")
@@ -333,7 +344,7 @@ class TelemetryStore:
     def set_engine_state(self, state: str, updated_by: str) -> None:
         if state not in ("ACTIVE", "PAUSED", "KILLED"):
             raise ValueError(f"invalid engine state {state}")
-        with self._connect() as conn:
+        with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 "UPDATE engine_state SET state = %s, updated_at = now(), updated_by = %s WHERE id = 1",
                 (state, updated_by),
