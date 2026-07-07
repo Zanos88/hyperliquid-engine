@@ -16,6 +16,12 @@ import yaml
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("telegram_control")
 
+# httpx logs full request URLs at INFO — which for the Telegram Bot API
+# includes the bot token. Silence to WARNING so the token never lands in
+# persisted logs (Railway retains stdout).
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 def build_account_snapshot(store, execution):
     """Live account snapshot with telemetry fallback (pre-purchase / dry-run)."""
