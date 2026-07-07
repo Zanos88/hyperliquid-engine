@@ -122,6 +122,21 @@ CREATE TABLE IF NOT EXISTS pending_signals (
     resolved_by TEXT
 );
 
+-- Latest market/structural state, written by the engine each bias cycle,
+-- read by the control plane's manual trade panel (strategy-anchored
+-- Buy/Sell needs current S/R levels cross-process).
+CREATE TABLE IF NOT EXISTS market_state (
+    id INT PRIMARY KEY CHECK (id = 1),
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    symbol TEXT NOT NULL DEFAULT 'BTC',
+    last_price NUMERIC NOT NULL,
+    bias TEXT NOT NULL,
+    long_stop NUMERIC,      -- structural stop for a manual long (nearest support - buffer)
+    long_target NUMERIC,    -- next opposing level above
+    short_stop NUMERIC,     -- nearest resistance + buffer
+    short_target NUMERIC    -- next opposing level below
+);
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard

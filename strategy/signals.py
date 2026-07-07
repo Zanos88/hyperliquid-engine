@@ -66,6 +66,23 @@ def _nearest_resistance(bias_result: BiasResult, price: float) -> float | None:
     return min((p for p in resistances if p > price), default=None)
 
 
+def manual_entry_levels(bias_result: BiasResult, price: float) -> dict:
+    """Structural stop/target proposals for MANUAL entries in both
+    directions, from the current bias state — consumed by the control
+    plane's trade panel (strategy-anchored Buy/Sell). Values are None when
+    no structural level exists on the required side; manual entries then
+    fall back to the custom-stop path. Same levels/buffer as the
+    automated path — no separate logic."""
+    support = _nearest_support(bias_result, price)
+    resistance = _nearest_resistance(bias_result, price)
+    return {
+        "long_stop": support * (1 - STRUCTURAL_STOP_BUFFER) if support is not None else None,
+        "long_target": _next_opposing_level_above(bias_result, price),
+        "short_stop": resistance * (1 + STRUCTURAL_STOP_BUFFER) if resistance is not None else None,
+        "short_target": _next_opposing_level_below(bias_result, price),
+    }
+
+
 def evaluate_signal(
     candles_4h: Sequence[Candle],
     candles_1h: Sequence[Candle],

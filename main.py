@@ -35,7 +35,7 @@ from ledger.tracker import Ledger
 from risk.circuit_breaker import CircuitBreaker
 from risk.gate import evaluate_gate
 from strategy.bias_4h import compute_bias
-from strategy.signals import Signal, SuppressedSignal, evaluate_signal
+from strategy.signals import Signal, SuppressedSignal, evaluate_signal, manual_entry_levels
 from strategy.timeframes import LOOKBACK_BARS, interval_seconds
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -162,6 +162,11 @@ def run() -> None:
                         "bias": current_bias_label, "bias_reason": bias_result.reason,
                         "mode": settings["mode"], "bias_tf": bias_tf, "trigger_tf": trigger_tf,
                     }
+                    # Publish structural levels for the manual trade panel
+                    levels = manual_entry_levels(bias_result, candles_trigger[-1].close)
+                    store.record_market_state(
+                        last_price=candles_trigger[-1].close, bias=current_bias_label, **levels,
+                    )
 
                     result = evaluate_signal(candles_bias, candles_trigger, now=now)
                     if isinstance(result, Signal):

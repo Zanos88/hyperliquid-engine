@@ -56,11 +56,17 @@ def build_account_snapshot(store, execution):
 
 
 def main() -> None:
-    from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler
+    from telegram.ext import (
+        ApplicationBuilder,
+        CallbackQueryHandler,
+        CommandHandler,
+        MessageHandler,
+        filters,
+    )
 
     from db.store import TelemetryStore
     from execution.propr_client import ProprExecutionService
-    from telegram_control import handlers
+    from telegram_control import handlers, trade_panel
     from telegram_control.auth import allowed_user_ids
     from telegram_control.handlers import ControlServices
 
@@ -86,6 +92,15 @@ def main() -> None:
         account_snapshot=build_account_snapshot(store, execution),
     )
 
+    # Record-before-dispatch for manual trades too: the Postgres floor-
+    # guard trigger judges every entry intent; a block aborts dispatch.
+    def intent_sink(intent):
+        ok = store.record_intent(intent, dry_run=execution.dry_run)
+        if not ok:
+            raise RuntimeError(f"floor-guard trigger blocked intent {intent.intent_id}")
+
+    execution._intent_sink = intent_sink
+
     def wire(fn):
         @functools.wraps(fn)
         async def wrapped(update, context):
@@ -105,6 +120,25 @@ def main() -> None:
     app.add_handler(CommandHandler("risk", wire(handlers.cmd_risk)))
     app.add_handler(CommandHandler("settings", wire(handlers.cmd_settings)))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_settings), pattern=r"^stg_"))
+    app.add_handler(CommandHandler("menu", wire(trade_panel.cmd_menu)))
+    app.add_handler(CommandHandler("start", wire(trade_panel.cmd_menu)))
+    app.add_handler(CommandHandler("trade", wire(trade_panel.cb_trade_command_shim)))
+    app.add_handler(CallbackQueryHandler(wire(trade_panel.cb_trade), pattern=r"^trd_"))
+    app.add_handler(CallbackQueryHandler(wire(trade_panel.cb_menu), pattern=r"^menu_"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wire(trade_panel.route_text)))
+
+    async def post_init(application):
+        await application.bot.set_my_commands([
+            ("menu", "Main menu + persistent keyboard"),
+            ("trade", "Manual trade panel"),
+            ("dashboard", "Equity, floors, positions"),
+            ("settings", "Mode + timeframes"),
+            ("risk", "Risk parameters"),
+            ("run", "Activate engine"),
+            ("pause", "Pause new entries"),
+            ("kill", "Cancel all + close all"),
+        ])
+    app.post_init = post_init
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_take_signal), pattern=r"^take_"))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_skip_signal), pattern=r"^skip_"))
     app.add_handler(CallbackQueryHandler(wire(handlers.cb_close_fraction), pattern=r"^close_"))

@@ -155,6 +155,40 @@ class TelemetryStore:
         })
         return new
 
+    # ── market state (engine-written levels for the manual trade panel) ──
+
+    def record_market_state(self, last_price: float, bias: str,
+                            long_stop: float | None, long_target: float | None,
+                            short_stop: float | None, short_target: float | None,
+                            symbol: str = "BTC") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO market_state (id, ts, symbol, last_price, bias,
+                                             long_stop, long_target, short_stop, short_target)
+                   VALUES (1, now(), %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (id) DO UPDATE SET
+                       ts = now(), symbol = EXCLUDED.symbol,
+                       last_price = EXCLUDED.last_price, bias = EXCLUDED.bias,
+                       long_stop = EXCLUDED.long_stop, long_target = EXCLUDED.long_target,
+                       short_stop = EXCLUDED.short_stop, short_target = EXCLUDED.short_target""",
+                (symbol, last_price, bias, long_stop, long_target, short_stop, short_target),
+            )
+
+    def get_market_state(self) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT ts, symbol, last_price, bias, long_stop, long_target,
+                          short_stop, short_target FROM market_state WHERE id = 1"""
+            ).fetchone()
+        if row is None:
+            return None
+        keys = ("ts", "symbol", "last_price", "bias", "long_stop", "long_target",
+                "short_stop", "short_target")
+        out = dict(zip(keys, row))
+        for k in ("last_price", "long_stop", "long_target", "short_stop", "short_target"):
+            out[k] = float(out[k]) if out[k] is not None else None
+        return out
+
     # ── strategy settings (set via /settings, read by the engine) ──
 
     def get_strategy_settings(self) -> dict:
