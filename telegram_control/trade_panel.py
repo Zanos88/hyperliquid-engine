@@ -27,6 +27,7 @@ from risk.sizing import MAX_RISK_PCT, MIN_RISK_PCT
 from strategy.signals import Signal, SignalDirection
 from telegram_control.handlers import (
     ControlServices,
+    _ack,
     _denied,
     _reply,
     _safe_positions,
