@@ -139,11 +139,13 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
         mode_line = f"Mode: {s['mode']} | TF: {s['active_bias_tf']} bias / {s['active_trigger_tf']} trigger"
     except Exception:
         mode_line = "Mode: (settings unavailable)"
+    ind_line = _indicator_summary_safe(services.store)
 
     lines = [
         "\U0001F4CB DASHBOARD",
         f"Engine: {state}",
         mode_line,
+        *( [ind_line] if ind_line else [] ),
         f"Equity: ${equity:,.2f}",
         f"Daily P&L: ${daily_pnl:+,.2f} ({daily_pnl / day_start:+.2%})",
         f"Distance to daily floor (${daily_floor:,.0f}): ${equity - daily_floor:,.2f}",
@@ -174,12 +176,14 @@ async def cmd_risk(update, context, services: ControlServices) -> None:
     args = getattr(context, "args", []) or []
     if not args:
         params = services.store.get_risk_params()
+        summary = _indicator_summary_safe(services.store)
         await _reply(update,
                      "⚙️ RISK PARAMS\n"
                      f"risk_pct: {params['risk_pct']:.4f} ({params['risk_pct']:.2%}) [bounds 0.25%-1.0%]\n"
                      f"alpha: {params['alpha']}\n"
                      f"max_concurrent: {params['max_concurrent']}\n"
-                     "Set with: /risk pct 0.5 | /risk alpha 1.5 | /risk max 2")
+                     + (summary + "\n" if summary else "")
+                     + "Set with: /risk pct 0.5 | /risk alpha 1.5 | /risk max 2")
         return
 
     name_map = {"pct": "risk_pct", "alpha": "alpha", "max": "max_concurrent"}
@@ -208,16 +212,57 @@ _TF_MENUS = {
 }
 
 
-def _settings_text(s: dict) -> str:
+INDICATOR_LABELS = {"bias_sr": "Bias (S/R+Fib)", "fisher": "Fisher", "obv": "OBV",
+                    "rsi": "RSI", "ichimoku": "Ichimoku"}
+
+
+def indicator_summary(cfg: dict) -> str:
+    """'Active: Bias+Fisher+OBV (RSI, Ichimoku off)' style readout."""
+    on = [INDICATOR_LABELS[n] for n in INDICATOR_LABELS if cfg.get(n)]
+    off = [INDICATOR_LABELS[n] for n in INDICATOR_LABELS if not cfg.get(n)]
+    line = "Active: " + "+".join(on) if on else "Active: NONE"
+    if off:
+        line += " (" + ", ".join(off) + " off)"
+    if cfg.get("ichimoku"):
+        line += f" | Ichimoku: {cfg.get('ichimoku_variant', 'standard')}"
+    return line
+
+
+def _indicator_summary_safe(store) -> str | None:
+    getter = getattr(store, "get_indicator_config", None)
+    if not callable(getter):
+        return None
+    try:
+        return indicator_summary(getter())
+    except Exception:
+        return None
+
+
+def _settings_text(s: dict, store=None) -> str:
     mode_icon = "\U0001F3ED" if s["mode"] == "production" else "\U0001F9EA"
-    return (
+    text = (
         "⚙️ STRATEGY SETTINGS\n"
         f"Mode: {mode_icon} {s['mode'].upper()}\n"
         f"Production combo: {s['prod_bias_tf']} bias / {s['prod_trigger_tf']} trigger\n"
         f"Test combo: {s['test_bias_tf']} bias / {s['test_trigger_tf']} trigger\n"
-        f"Active: {s['active_bias_tf']} / {s['active_trigger_tf']}\n"
-        "Changes apply from the next engine cycle."
+        f"Active: {s['active_bias_tf']} / {s['active_trigger_tf']}"
     )
+    summary = _indicator_summary_safe(store) if store is not None else None
+    if summary:
+        text += "\n" + summary
+    return text + "\nChanges apply from the next engine cycle."
+
+
+def indicators_menu_markup(cfg: dict) -> dict:
+    rows = []
+    for name, label in INDICATOR_LABELS.items():
+        mark = "✅" if cfg.get(name) else "❌"
+        rows.append([{"text": f"{mark} {label}", "callback_data": f"stg_ind_{name}"}])
+    other = "crypto" if cfg.get("ichimoku_variant") == "standard" else "standard"
+    rows.append([{"text": f"Ichimoku variant: {cfg.get('ichimoku_variant', 'standard')} "
+                          f"(tap for {other})", "callback_data": f"stg_indvar_{other}"}])
+    rows.append([{"text": "⬅️ Back", "callback_data": "stg_back"}])
+    return {"inline_keyboard": rows}
 
 
 def settings_menu_markup(s: dict) -> dict:
@@ -236,6 +281,7 @@ def settings_menu_markup(s: dict) -> dict:
             {"text": "Test Bias TF", "callback_data": "stg_menu_tbias"},
             {"text": "Test Trigger TF", "callback_data": "stg_menu_ttrig"},
         ],
+        [{"text": "\U0001F4C8 Indicators", "callback_data": "stg_menu_ind"}],
     ]}
 
 
@@ -261,7 +307,7 @@ async def cmd_settings(update, context, services: ControlServices) -> None:
     if _denied(update, "/settings"):
         return
     s = services.store.get_strategy_settings()
-    await _reply(update, _settings_text(s), reply_markup=settings_menu_markup(s))
+    await _reply(update, _settings_text(s, services.store), reply_markup=settings_menu_markup(s))
 
 
 async def cb_settings(update, context, services: ControlServices) -> None:
@@ -277,11 +323,30 @@ async def cb_settings(update, context, services: ControlServices) -> None:
     try:
         if verb == "mode":
             s = services.store.set_strategy_setting("mode", rest, updated_by=who)
+        elif verb == "menu" and rest == "ind":
+            cfg = services.store.get_indicator_config()
+            await _reply(update, "\U0001F4C8 CONFLUENCE INDICATORS — tap to toggle\n"
+                                 + indicator_summary(cfg),
+                         reply_markup=indicators_menu_markup(cfg))
+            return
         elif verb == "menu":
             s = services.store.get_strategy_settings()
             setting_name, _, title = _TF_MENUS[rest]
             await _reply(update, f"⚙️ {title}\nCurrent: {s[setting_name]}",
                          reply_markup=timeframe_menu_markup(rest, s[setting_name]))
+            return
+        elif verb == "ind":
+            cfg = services.store.get_indicator_config()
+            new_cfg = services.store.set_indicator_toggle(rest, not cfg[rest], updated_by=who)
+            await _reply(update, "\U0001F4C8 CONFLUENCE INDICATORS — tap to toggle\n"
+                                 + indicator_summary(new_cfg),
+                         reply_markup=indicators_menu_markup(new_cfg))
+            return
+        elif verb == "indvar":
+            new_cfg = services.store.set_ichimoku_variant(rest, updated_by=who)
+            await _reply(update, "\U0001F4C8 CONFLUENCE INDICATORS — tap to toggle\n"
+                                 + indicator_summary(new_cfg),
+                         reply_markup=indicators_menu_markup(new_cfg))
             return
         elif verb == "back":
             s = services.store.get_strategy_settings()
@@ -292,13 +357,13 @@ async def cb_settings(update, context, services: ControlServices) -> None:
             await _reply(update, f"Unknown settings action: {data}")
             return
     except ValueError as exc:
-        # invalid combo (e.g. bias not longer than trigger) — explain, re-show panel
+        # invalid change (combo/toggle rule) — explain, re-show panel
         s = services.store.get_strategy_settings()
-        await _reply(update, f"❌ {exc}\n\n{_settings_text(s)}",
+        await _reply(update, f"❌ {exc}\n\n{_settings_text(s, services.store)}",
                      reply_markup=settings_menu_markup(s))
         return
 
-    await _reply(update, _settings_text(s), reply_markup=settings_menu_markup(s))
+    await _reply(update, _settings_text(s, services.store), reply_markup=settings_menu_markup(s))
 
 
 def _safe_positions(services: ControlServices, base: str) -> list[dict]:

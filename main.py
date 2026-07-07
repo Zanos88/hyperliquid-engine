@@ -103,6 +103,7 @@ def run() -> None:
 
     last_trigger_open_seen: int | None = None
     active_combo_seen: tuple[str, str] | None = None
+    prev_alignment: str | None = None  # edge-trigger memory for state-based confluence
     last_heartbeat_at = datetime.now(timezone.utc)
     last_day = datetime.now(timezone.utc).date()
     feed_errors_since_heartbeat = 0
@@ -158,21 +159,40 @@ def run() -> None:
                         sr_lookback=cfg["strategy"]["sr_lookback"],
                     )
                     current_bias_label = bias_result.bias.value
-                    latest_indicators = {
-                        "bias": current_bias_label, "bias_reason": bias_result.reason,
-                        "mode": settings["mode"], "bias_tf": bias_tf, "trigger_tf": trigger_tf,
-                    }
                     # Publish structural levels for the manual trade panel
                     levels = manual_entry_levels(bias_result, candles_trigger[-1].close)
                     store.record_market_state(
                         last_price=candles_trigger[-1].close, bias=current_bias_label, **levels,
                     )
 
-                    result = evaluate_signal(candles_bias, candles_trigger, now=now)
-                    if isinstance(result, Signal):
+                    ind_cfg = store.get_indicator_config()
+                    result, readings = evaluate_signal(
+                        candles_bias, candles_trigger, now=now,
+                        config=ind_cfg, ichimoku_variant=ind_cfg["ichimoku_variant"],
+                        return_readings=True,
+                    )
+                    latest_indicators = {
+                        "mode": settings["mode"], "bias_tf": bias_tf, "trigger_tf": trigger_tf,
+                        "readings": readings,
+                    }
+
+                    # Edge-trigger: with state-based configs (e.g. Fisher
+                    # disabled) alignment persists across bars — only the
+                    # TRANSITION into alignment is a signal event. With
+                    # Fisher enabled its cross-bar-only vote makes this a
+                    # no-op (alignment can't persist), preserving the
+                    # original behavior exactly.
+                    enabled_votes = [r["vote"] for n, r in readings.items() if r["enabled"]]
+                    alignment = (enabled_votes[0] if enabled_votes
+                                 and all(v == enabled_votes[0] for v in enabled_votes)
+                                 and enabled_votes[0] != "NONE" else None)
+                    is_new_alignment = alignment is not None and alignment != prev_alignment
+                    prev_alignment = alignment
+
+                    if isinstance(result, Signal) and is_new_alignment:
                         _handle_signal(result, cfg, store, execution, telegram, ledger,
                                        breaker, peak_equity, latest_indicators, settings)
-                    elif isinstance(result, SuppressedSignal):
+                    elif isinstance(result, SuppressedSignal) and is_new_alignment:
                         logger.info("Signal suppressed: %s", result.reason)
 
             if candles_trigger:
@@ -249,9 +269,19 @@ def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
     store.create_pending_signal(
         signal_id, signal.direction.value, signal.entry, signal.stop,
         signal.target, signal.reward_risk,
+        indicators_snapshot=indicators,  # full readings — the backtest-review record
     )
     risk_amount = abs(signal.entry - signal.stop) * decision.quantity
-    alert_text = format_entry_signal(signal, decision.quantity, params["risk_pct"], risk_amount)
+    readings = indicators.get("readings", {})
+    ind_line = " | ".join(
+        f"{n}:{r['vote']}" + (f"({r['value']:.1f})" if isinstance(r.get("value"), float) else "")
+        for n, r in readings.items() if r["enabled"]
+    )
+    off = [n for n, r in readings.items() if not r["enabled"]]
+    if off:
+        ind_line += "  (off: " + ", ".join(off) + ")"
+    alert_text = (format_entry_signal(signal, decision.quantity, params["risk_pct"], risk_amount)
+                  + ("\nIndicators: " + ind_line if ind_line else ""))
 
     if not decision.approved:
         telegram.send(decorate(alert_text + "\n⚠️ GATE REJECTED:\n- " + "\n- ".join(decision.reasons), settings),

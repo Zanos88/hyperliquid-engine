@@ -155,6 +155,55 @@ class TelemetryStore:
         })
         return new
 
+    # ── indicator toggles (set via /settings -> Indicators) ──
+
+    def get_indicator_config(self) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT bias_sr, fisher, obv, rsi, ichimoku, ichimoku_variant
+                   FROM indicator_config WHERE id = 1"""
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("indicator_config row missing — run apply_schema()")
+        return {"bias_sr": row[0], "fisher": row[1], "obv": row[2],
+                "rsi": row[3], "ichimoku": row[4], "ichimoku_variant": row[5]}
+
+    def set_indicator_toggle(self, name: str, enabled: bool, updated_by: str) -> dict:
+        from strategy.signals import INDICATOR_NAMES
+
+        if name not in INDICATOR_NAMES:
+            raise ValueError(f"unknown indicator {name} — allowed: {INDICATOR_NAMES}")
+        old = self.get_indicator_config()
+        candidate = {**old, name: enabled}
+        if not any(candidate[n] for n in INDICATOR_NAMES):
+            raise ValueError("at least one indicator must remain enabled")
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE indicator_config SET {name} = %s, updated_at = now(), updated_by = %s WHERE id = 1",
+                (enabled, updated_by),
+            )
+        new = self.get_indicator_config()
+        self.record_risk_event("settings_change", {
+            "setting": f"indicator:{name}", "old": old[name], "new": new[name], "by": updated_by,
+        })
+        return new
+
+    def set_ichimoku_variant(self, variant: str, updated_by: str) -> dict:
+        if variant not in ("standard", "crypto"):
+            raise ValueError(f"ichimoku variant must be standard or crypto, got {variant!r}")
+        old = self.get_indicator_config()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE indicator_config SET ichimoku_variant = %s, updated_at = now(), updated_by = %s WHERE id = 1",
+                (variant, updated_by),
+            )
+        new = self.get_indicator_config()
+        self.record_risk_event("settings_change", {
+            "setting": "indicator:ichimoku_variant", "old": old["ichimoku_variant"],
+            "new": new["ichimoku_variant"], "by": updated_by,
+        })
+        return new
+
     # ── market state (engine-written levels for the manual trade panel) ──
 
     def record_market_state(self, last_price: float, bias: str,
@@ -240,12 +289,15 @@ class TelemetryStore:
     # ── pending signal frames (Frame A, cross-process) ──
 
     def create_pending_signal(self, signal_id: str, direction: str, entry: float,
-                              stop: float, target: float, reward_risk: float) -> None:
+                              stop: float, target: float, reward_risk: float,
+                              indicators_snapshot: dict | None = None) -> None:
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO pending_signals (signal_id, direction, entry, stop, target, reward_risk)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (signal_id, direction, entry, stop, target, reward_risk),
+                """INSERT INTO pending_signals (signal_id, direction, entry, stop, target,
+                                                reward_risk, indicators_snapshot)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (signal_id, direction, entry, stop, target, reward_risk,
+                 json.dumps(indicators_snapshot) if indicators_snapshot else None),
             )
 
     def get_pending_signal(self, signal_id: str) -> dict | None:

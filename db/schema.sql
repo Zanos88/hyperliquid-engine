@@ -122,6 +122,29 @@ CREATE TABLE IF NOT EXISTS pending_signals (
     resolved_by TEXT
 );
 
+-- Confluence indicator toggles (set via /settings -> Indicators, read by
+-- the engine each cycle). Defaults preserve the original 3-indicator
+-- behavior: bias_sr/fisher/obv on, rsi/ichimoku off.
+CREATE TABLE IF NOT EXISTS indicator_config (
+    id INT PRIMARY KEY CHECK (id = 1),
+    bias_sr BOOLEAN NOT NULL DEFAULT true,
+    fisher BOOLEAN NOT NULL DEFAULT true,
+    obv BOOLEAN NOT NULL DEFAULT true,
+    rsi BOOLEAN NOT NULL DEFAULT false,
+    ichimoku BOOLEAN NOT NULL DEFAULT false,
+    ichimoku_variant TEXT NOT NULL DEFAULT 'standard'
+        CHECK (ichimoku_variant IN ('standard', 'crypto')),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT
+);
+INSERT INTO indicator_config (id, updated_by)
+    VALUES (1, 'schema-init')
+    ON CONFLICT (id) DO NOTHING;
+
+-- Backtest-review data: full indicator snapshot per SIGNAL (not just per
+-- taken intent) — added for the indicator-toggle feature.
+ALTER TABLE pending_signals ADD COLUMN IF NOT EXISTS indicators_snapshot JSONB;
+
 -- Latest market/structural state, written by the engine each bias cycle,
 -- read by the control plane's manual trade panel (strategy-anchored
 -- Buy/Sell needs current S/R levels cross-process).

@@ -354,7 +354,8 @@ async def cb_menu(update, context, services: ControlServices) -> None:
         await handlers.cmd_dashboard(update, context, services)
     elif data == "menu_settings":
         s = services.store.get_strategy_settings()
-        await _reply(update, handlers._settings_text(s), reply_markup=handlers.settings_menu_markup(s))
+        await _reply(update, handlers._settings_text(s, services.store),
+                     reply_markup=handlers.settings_menu_markup(s))
     elif data == "menu_risk":
         await handlers.cmd_risk(update, context, services)
     elif data == "menu_run":
