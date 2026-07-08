@@ -23,6 +23,10 @@ MIN_REWARD_RISK = 2.0
 STRUCTURAL_STOP_BUFFER = 0.0015  # 0.15% beyond the S/R/swing level
 DEFAULT_ATR_MULTIPLIER = 1.5     # hybrid stop's ATR floor factor (sweep-tuned, not final)
 STOP_MODELS = ("structural", "hybrid")
+# |4H Fisher| at/beyond this marks the move as exhausted — a hard rule
+# from the user's live discretionary trading (confirmed 2026-07-08);
+# the sweep brackets it with 1.5/2.5 as sensitivity checks.
+FISHER4H_EXHAUSTION_THRESHOLD = 2.0
 
 # All confluence indicators, independently toggleable. Defaults preserve
 # the original 3-indicator behavior exactly (RSI/Ichimoku off until the
@@ -194,6 +198,9 @@ def evaluate_signal(
     return_readings: bool = False,
     stop_model: str = "structural",
     atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
+    fisher4h_entry_filter: bool = False,
+    fisher4h_value: float | None = None,
+    exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
 ):
     """Full confluence + exit + R:R gate.
 
@@ -205,6 +212,14 @@ def evaluate_signal(
     resolve_stop). Defaults preserve the pre-V2.2 structural-only
     behavior exactly — the live engine passes nothing here until the
     sweep results are reviewed (user decision 2026-07-08).
+
+    fisher4h_entry_filter (BACKTEST-ONLY until sweep results say
+    otherwise): suppress a fresh signal when the 4H Fisher is already
+    extended past exhaustion_threshold in the SAME direction — don't
+    chase a 4H move that looks capped. The caller computes and passes
+    the last-closed 4H Fisher value (this function stays pure); the
+    check runs AFTER the R:R gate so its suppression count isolates
+    "trades that would otherwise have been taken".
     """
     direction, readings, bias_result = evaluate_confluence(
         candles_4h, candles_1h, config=config, ichimoku_variant=ichimoku_variant,
@@ -250,6 +265,21 @@ def evaluate_signal(
 
     if rr < MIN_REWARD_RISK:
         return _ret(SuppressedSignal(direction, rr, f"R:R {rr:.2f} below minimum {MIN_REWARD_RISK}"))
+
+    if fisher4h_entry_filter:
+        if fisher4h_value is None:
+            raise ValueError("fisher4h_entry_filter requires fisher4h_value from the caller")
+        extended_same_direction = (
+            fisher4h_value >= exhaustion_threshold if direction == SignalDirection.LONG
+            else fisher4h_value <= -exhaustion_threshold
+        )
+        if extended_same_direction:
+            return _ret(SuppressedSignal(
+                direction, rr,
+                f"4H Fisher {fisher4h_value:+.2f} already extended beyond "
+                f"+/-{exhaustion_threshold} in {direction.value} direction — not chasing",
+                kind="fisher4h_exhaustion",
+            ))
 
     active = [f"{name}:{r['vote']}" for name, r in readings.items() if r["enabled"]]
     return _ret(Signal(

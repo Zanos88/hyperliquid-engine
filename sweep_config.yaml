@@ -2,6 +2,9 @@
 # ~90 runs, not the full 360-run cross; a full cross is a YAML edit away).
 #
 # Grid A isolates the STOP MODEL axis against clean baselines.
+# Grid B isolates the FISHER-4H EXHAUSTION axis (entry filter / exit
+# signal / both, thresholds 1.5/2.0/2.5) on the default indicator set;
+# its baselines (fisher off) are Grid A's default-indicator rows.
 # Window note: each TF pair is capped by Hyperliquid's 5,000-candle
 # retention on its TRIGGER timeframe (1h -> ~208d, 5m -> ~17d,
 # 4h -> ~833d / ~2.3yr — the long-horizon pair).
@@ -21,3 +24,18 @@ grids:
       - {model: hybrid, atr_multiplier: 1.0}
       - {model: hybrid, atr_multiplier: 1.5}
       - {model: hybrid, atr_multiplier: 2.0}
+
+  - name: B_fisher4h
+    tf_pairs:
+      - {bias: 4h, trigger: 1h}
+      - {bias: 15m, trigger: 5m}
+      - {bias: 1d, trigger: 4h}
+    indicator_sets:
+      - default
+    stop_models:
+      - {model: structural}
+      - {model: hybrid, atr_multiplier: 1.5}
+    fisher4h:                        # 2.0 = user's hard rule; 1.5/2.5 = sensitivity brackets
+      - {entry: true, exit: false, thresholds: [1.5, 2.0, 2.5]}
+      - {entry: false, exit: true, thresholds: [1.5, 2.0, 2.5]}
+      - {entry: true, exit: true, thresholds: [1.5, 2.0, 2.5]}

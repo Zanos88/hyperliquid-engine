@@ -128,6 +128,103 @@ def test_shipped_sweep_config_expands():
     assert {c["grid"] for c in combos} >= {"A_stop_models"}
 
 
+# ── 4H Fisher exhaustion exit (backtest-only V2.2 variant) ──
+
+H = 3600000
+
+
+def _drift_candles(n, start=100.0):
+    """Never touches the test signal's stop (95) or target (120)."""
+    return [candle(i, start, start + 2, start - 2, start) for i in range(n)]
+
+
+def test_fisher_exhaustion_exit_on_cross_in_favor():
+    candles = _drift_candles(10)
+    # 4h bars close at 4h and 8h; Fisher crosses INTO +2 territory at 8h
+    series = [(4 * H, 1.0), (8 * H, 2.5)]
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=120.0),
+                         fisher4h_exit=True, fisher4h_series=series,
+                         exhaustion_threshold=2.0)
+    assert t.exit_reason == "fisher_exhaustion"
+    assert t.bars_held == 7                                    # bar closing at 8h is index 7
+    assert t.exit_ts == datetime.fromtimestamp(8 * 3600, tz=timezone.utc)
+    exit_price = candles[7].close                              # exit AT the trigger close
+    expected_gross = (exit_price - 100.0) / 5.0
+    expected_fee = (100.0 + exit_price) * TAKER_FEE / 5.0
+    assert t.gross_r == pytest.approx(expected_gross)
+    assert t.net_r == pytest.approx(expected_gross - expected_fee)
+
+
+def test_fisher_exhaustion_edge_semantics_already_extended_never_fires():
+    candles = _drift_candles(12)
+    # extended BEFORE entry (4h close <= entry close) and stays extended:
+    # no crossing INTO the zone after entry -> no exit
+    series = [(4 * H, 2.3), (8 * H, 2.4), (12 * H, 2.2)]
+    t = simulate_outcome(candles, 4, long_signal(entry=100.0, stop=95.0, target=120.0),
+                         fisher4h_exit=True, fisher4h_series=series,
+                         exhaustion_threshold=2.0)
+    assert t.exit_reason == "unresolved"
+
+
+def test_fisher_exhaustion_stop_touch_same_bar_wins():
+    candles = _drift_candles(10)
+    candles[7] = candle(7, 100, 102, 94, 96)                   # touches stop at bar 7 (close 8h)
+    series = [(4 * H, 1.0), (8 * H, 2.5)]                      # cross also lands at 8h
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=120.0),
+                         fisher4h_exit=True, fisher4h_series=series,
+                         exhaustion_threshold=2.0)
+    assert t.exit_reason == "stop"                             # touch precedes close-based exit
+
+
+def test_fisher_exhaustion_short_mirrored_and_opposite_ignored():
+    short = Signal(direction=SignalDirection.SHORT, entry=100.0, stop=105.0, target=80.0,
+                   reward_risk=4.0, timestamp=NOW, bias_reason="t", trigger_reason="t")
+    candles = _drift_candles(10)
+    in_favor = [(4 * H, -1.0), (8 * H, -2.5)]                  # bearish extension favors a short
+    t = simulate_outcome(candles, 0, short, fisher4h_exit=True,
+                         fisher4h_series=in_favor, exhaustion_threshold=2.0)
+    assert t.exit_reason == "fisher_exhaustion"
+
+    against = [(4 * H, 1.0), (8 * H, 2.5)]                     # bullish extension is NOT in favor
+    t2 = simulate_outcome(candles, 0, short, fisher4h_exit=True,
+                          fisher4h_series=against, exhaustion_threshold=2.0)
+    assert t2.exit_reason == "unresolved"
+
+
+def test_fisher_exhaustion_exit_requires_series():
+    with pytest.raises(ValueError):
+        simulate_outcome(_drift_candles(5), 0, long_signal(), fisher4h_exit=True)
+
+
+# ── 4H Fisher exhaustion entry filter (strategy/signals.py) ──
+
+def test_entry_filter_suppresses_same_direction_extension(monkeypatch):
+    import strategy.signals as signals_mod
+    from strategy.signals import evaluate_signal
+    from tests.test_hybrid_stop import BIAS_ONLY, _synthetic_bullish_bias, flat_candles
+
+    monkeypatch.setattr(signals_mod, "compute_bias", lambda c: _synthetic_bullish_bias())
+    trigger = flat_candles(30, close=100.0, spread=2.0)
+
+    suppressed = evaluate_signal(trigger, trigger, config=BIAS_ONLY,
+                                 fisher4h_entry_filter=True, fisher4h_value=2.3)
+    assert type(suppressed).__name__ == "SuppressedSignal"
+    assert suppressed.kind == "fisher4h_exhaustion"
+
+    # extension in the OPPOSITE direction must not suppress a long
+    taken = evaluate_signal(trigger, trigger, config=BIAS_ONLY,
+                            fisher4h_entry_filter=True, fisher4h_value=-2.5)
+    assert isinstance(taken, Signal)
+
+    # below threshold -> not extended -> taken
+    taken2 = evaluate_signal(trigger, trigger, config=BIAS_ONLY,
+                             fisher4h_entry_filter=True, fisher4h_value=1.9)
+    assert isinstance(taken2, Signal)
+
+    with pytest.raises(ValueError):                            # filter without a value is a bug
+        evaluate_signal(trigger, trigger, config=BIAS_ONLY, fisher4h_entry_filter=True)
+
+
 # ── return statistics (real data replaces the rejected external table) ──
 
 def test_log_return_stats_alternating_series():
