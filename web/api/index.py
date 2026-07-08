@@ -23,11 +23,25 @@ import os
 import time
 from hashlib import sha256
 
+from pathlib import Path
+
 import psycopg
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI()
+
+_DASHBOARD_HTML = Path(__file__).parent / "dashboard.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root() -> HTMLResponse:
+    """Serve the dashboard shell (the login form IS the gate — all data
+    endpoints stay behind auth; the shell contains no data)."""
+    try:
+        return HTMLResponse(_DASHBOARD_HTML.read_text(encoding="utf-8"))
+    except OSError:
+        return HTMLResponse("<h1>dashboard asset missing</h1>", status_code=500)
 
 COOKIE_NAME = "btcbot_session"
 SESSION_TTL_SECONDS = 12 * 3600
