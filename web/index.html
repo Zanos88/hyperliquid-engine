@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC Signal Bot</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e;
+          --green:#3fb950; --red:#f85149; --amber:#d29922; --blue:#58a6ff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; padding:16px; }
+  .wrap { max-width:760px; margin:0 auto; display:grid; gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  h1 { font-size:17px; display:flex; justify-content:space-between; align-items:center; }
+  h2 { font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+  .big { font-size:26px; font-weight:700; }
+  .row { display:flex; justify-content:space-between; padding:3px 0; gap:10px; }
+  .row span:first-child { color:var(--dim); }
+  .pos { color:var(--green); } .neg { color:var(--red); } .warn { color:var(--amber); }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:4px; }
+  .bar>div { height:100%; background:var(--green); border-radius:4px; }
+  .bar>div.low { background:var(--amber); } .bar>div.crit { background:var(--red); }
+  .pill { padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid var(--line); }
+  .pill.ACTIVE { color:var(--green); border-color:var(--green); }
+  .pill.PAUSED { color:var(--amber); border-color:var(--amber); }
+  .pill.KILLED { color:var(--red); border-color:var(--red); }
+  #login { max-width:340px; margin:18vh auto; }
+  input,button { width:100%; padding:11px; border-radius:8px; border:1px solid var(--line);
+                 background:var(--bg); color:var(--text); font-size:15px; }
+  button { background:var(--blue); color:#fff; border:0; margin-top:10px; font-weight:600; cursor:pointer; }
+  #err { color:var(--red); font-size:13px; margin-top:8px; min-height:18px; }
+  svg { width:100%; height:64px; display:block; }
+  ul { list-style:none; } li { padding:4px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  li:last-child { border:0; } .dim { color:var(--dim); }
+  #stale { color:var(--red); font-size:12px; display:none; }
+</style>
+</head>
+<body>
+<div id="login" class="card">
+  <h2>BTC Signal Bot — Dashboard</h2>
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+  <button onclick="doLogin()">Sign in</button>
+  <div id="err"></div>
+</div>
+
+<div id="dash" class="wrap" style="display:none">
+  <div class="card">
+    <h1>BTC Signal Bot <span id="engine" class="pill">…</span></h1>
+    <div id="stale">⚠ data stale — engine may be down</div>
+  </div>
+  <div class="card">
+    <h2>Equity (paper)</h2>
+    <div class="big" id="equity">—</div>
+    <div class="row"><span>Day P&amp;L</span><span id="daypnl">—</span></div>
+    <svg id="spark" preserveAspectRatio="none" viewBox="0 0 300 60"></svg>
+  </div>
+  <div class="card">
+    <h2>Loss buffers</h2>
+    <div class="row"><span>Today (of $3,000 daily limit)</span><span id="dbuf">—</span></div>
+    <div class="bar"><div id="dbar" style="width:100%"></div></div>
+    <div class="row" style="margin-top:8px"><span>To max-DD floor ($94,000)</span><span id="fbuf">—</span></div>
+    <div class="bar"><div id="fbar" style="width:100%"></div></div>
+    <div class="row" style="margin-top:8px"><span>Circuit breaker</span><span id="cb">—</span></div>
+  </div>
+  <div class="card">
+    <h2>Market — why</h2>
+    <div class="row"><span>Bias</span><span id="bias">—</span></div>
+    <div class="dim" id="biaswhy" style="font-size:13px"></div>
+    <div class="row"><span>Last price</span><span id="last">—</span></div>
+    <div class="row"><span>Structural long</span><span id="slong">—</span></div>
+    <div class="row"><span>Mode / TF</span><span id="mode">—</span></div>
+  </div>
+  <div class="card">
+    <h2>Position</h2>
+    <div class="row"><span>Open (paper)</span><span id="posn">—</span></div>
+    <div class="row"><span>Open risk</span><span id="orisk">—</span></div>
+  </div>
+  <div class="card">
+    <h2>Recent signals &amp; risk events</h2>
+    <ul id="events"><li class="dim">loading…</li></ul>
+  </div>
+  <div class="card dim" style="font-size:12px">
+    View-only. Actions live in the Telegram control plane. Updated <span id="upd">—</span> · polls every 15s
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const usd = v => v==null ? "—" : "$" + v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+
+async function doLogin(){
+  $("err").textContent = "";
+  const r = await fetch("/api/login", {method:"POST", headers:{"Content-Type":"application/json"},
+                                       body: JSON.stringify({password: $("pw").value})});
+  if (r.ok){ start(); }
+  else if (r.status === 503){ $("err").textContent = "Dashboard not configured (503 fail-closed)"; }
+  else { $("err").textContent = "Wrong password"; }
+}
+
+function start(){ $("login").style.display="none"; $("dash").style.display="grid"; refresh(); setInterval(refresh, 15000); }
+
+async function refresh(){
+  const r = await fetch("/api/status");
+  if (r.status === 401){ location.reload(); return; }
+  if (!r.ok) return;
+  const d = await r.json();
+  const t = d.telemetry, m = d.market, s = d.settings;
+  $("engine").textContent = d.engine_state || "?";
+  $("engine").className = "pill " + (d.engine_state || "");
+  if (t){
+    $("equity").textContent = usd(t.equity);
+    $("daypnl").textContent = usd(t.daily_pnl);
+    $("daypnl").className = t.daily_pnl >= 0 ? "pos" : "neg";
+    $("dbuf").textContent = usd(t.daily_buffer_left) + " left";
+    setBar("dbar", t.daily_buffer_left / 3000);
+    $("fbuf").textContent = usd(t.dd_buffer_left) + " left";
+    setBar("fbar", t.dd_buffer_left / 6000);
+    $("cb").textContent = t.cb_halted ? "HALTED (−2.5% buffer hit)" : "armed at −2.5% daily";
+    $("cb").className = t.cb_halted ? "neg" : "pos";
+    $("posn").textContent = t.open_positions ?? "—";
+    $("orisk").textContent = t.open_risk_usd ? usd(t.open_risk_usd) : "none";
+    const age = (Date.now() - new Date(t.ts).getTime()) / 60000;
+    $("stale").style.display = age > 5 ? "block" : "none";
+  }
+  if (m){
+    $("bias").textContent = m.bias;
+    $("bias").className = m.bias === "BULLISH" ? "pos" : m.bias === "BEARISH" ? "neg" : "warn";
+    $("biaswhy").textContent = m.bias_reason || "";
+    $("last").textContent = usd(m.last_price);
+    $("slong").textContent = (m.long_stop && m.long_target)
+      ? `stop ${usd(m.long_stop)} / target ${usd(m.long_target)}` : "no valid structure";
+  }
+  if (s){ $("mode").textContent = `${s.mode} · ${s.active_bias_tf}/${s.active_trigger_tf}`; }
+  $("upd").textContent = new Date().toLocaleTimeString();
+  drawSpark(); loadEvents();
+}
+
+function setBar(id, frac){
+  const el = $(id); const pct = Math.max(0, Math.min(1, frac)) * 100;
+  el.style.width = pct + "%";
+  el.className = pct < 20 ? "crit" : pct < 50 ? "low" : "";
+}
+
+async function drawSpark(){
+  const r = await fetch("/api/equity"); if (!r.ok) return;
+  const {series} = await r.json(); if (!series.length) return;
+  const vals = series.map(p => p.equity);
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const pts = vals.map((v,i) => `${(i/(vals.length-1||1))*300},${58 - ((v-min)/span)*54}`).join(" ");
+  $("spark").innerHTML = `<polyline points="${pts}" fill="none" stroke="#58a6ff" stroke-width="1.5"/>`;
+}
+
+async function loadEvents(){
+  const r = await fetch("/api/events"); if (!r.ok) return;
+  const d = await r.json();
+  const items = [];
+  for (const s of d.signals || []) items.push({ts:s.ts, txt:`SIGNAL ${s.direction} @ ${usd(s.entry)} → ${s.status} (R:R ${s.reward_risk.toFixed(1)})`});
+  for (const e of d.risk_events || []) items.push({ts:e.ts, txt:`RISK ${e.type}`});
+  items.sort((a,b) => b.ts.localeCompare(a.ts));
+  $("events").innerHTML = items.length
+    ? items.slice(0,12).map(i => `<li><span class="dim">${i.ts.slice(5,16).replace("T"," ")}</span> ${i.txt}</li>`).join("")
+    : `<li class="dim">no events yet — no trades have been executed</li>`;
+}
+
+// auto-resume an existing session
+fetch("/api/status").then(r => { if (r.ok) start(); });
+</script>
+</body>
+</html>
