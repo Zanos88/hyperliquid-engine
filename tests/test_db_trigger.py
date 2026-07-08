@@ -120,11 +120,20 @@ def test_strategy_settings_roundtrip(store):
 
 
 def test_engine_state_roundtrip(store):
-    assert store.get_engine_state() in ("ACTIVE", "PAUSED", "KILLED")
-    store.set_engine_state("ACTIVE", updated_by="test")
-    assert store.get_engine_state() == "ACTIVE"
-    store.set_engine_state("KILLED", updated_by="test")
-    assert store.get_engine_state() == "KILLED"
-    with pytest.raises(ValueError):
-        store.set_engine_state("BANANAS", updated_by="test")
-    store.set_engine_state("PAUSED", updated_by="test")
+    # These tests run against the LIVE database (railway run) — always
+    # restore the pre-test state or the suite silently pauses the live
+    # engine (it did, 2026-07-08 06:12 UTC: forward test stopped by a
+    # leftover PAUSED write from this very test).
+    initial = store.get_engine_state()
+    assert initial in ("ACTIVE", "PAUSED", "KILLED")
+    try:
+        store.set_engine_state("ACTIVE", updated_by="test")
+        assert store.get_engine_state() == "ACTIVE"
+        store.set_engine_state("KILLED", updated_by="test")
+        assert store.get_engine_state() == "KILLED"
+        with pytest.raises(ValueError):
+            store.set_engine_state("BANANAS", updated_by="test")
+        store.set_engine_state("PAUSED", updated_by="test")
+    finally:
+        store.set_engine_state(initial, updated_by="test_restore")
+    assert store.get_engine_state() == initial
