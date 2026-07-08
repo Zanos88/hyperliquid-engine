@@ -207,6 +207,9 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
         why = f" — {ms['bias_reason']}" if ms.get("bias_reason") else ""
         lines.append(f"Bias: <b>{ms['bias']}</b>{why}")
         lines.append(f"Last: ${ms['last_price']:,.2f}")
+        conf = confluence_line(ms.get("readings"))
+        if conf:
+            lines.append(conf)
         if ms["long_stop"] and ms["long_target"]:
             rr = (ms["long_target"] - ms["last_price"]) / max(ms["last_price"] - ms["long_stop"], 1e-9)
             lines.append(f"Structural long: stop ${ms['long_stop']:,.0f} / target ${ms['long_target']:,.0f} (R:R {rr:.1f})")
@@ -293,6 +296,32 @@ def indicator_summary(cfg: dict) -> str:
     if cfg.get("ichimoku"):
         line += f" | Ichimoku: {cfg.get('ichimoku_variant', 'standard')}"
     return line
+
+
+def confluence_line(readings: dict | None) -> str | None:
+    """'Confluence: 2/3 LONG — waiting on: Fisher' from live readings.
+    Names the exact blocker; states full alignment when it exists."""
+    if not readings:
+        return None
+    votes, blockers = [], []
+    for name, r in readings.items():
+        if not r.get("enabled"):
+            continue
+        votes.append(r.get("vote"))
+        if r.get("vote") == "NONE":
+            blockers.append(INDICATOR_LABELS.get(name, name))
+    n = len(votes)
+    if n == 0:
+        return "Confluence: no indicators enabled"
+    longs = sum(1 for v in votes if v == "LONG")
+    shorts = sum(1 for v in votes if v == "SHORT")
+    if longs == n:
+        return f"Confluence: ALL {n} aligned LONG"
+    if shorts == n:
+        return f"Confluence: ALL {n} aligned SHORT"
+    lead = f"{longs}/{n} LONG" if longs >= shorts else f"{shorts}/{n} SHORT"
+    tail = f" — waiting on: {', '.join(blockers)}" if blockers else " — votes split"
+    return f"Confluence: {lead}{tail}"
 
 
 def _indicator_summary_safe(store) -> str | None:

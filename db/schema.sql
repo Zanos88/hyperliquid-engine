@@ -164,6 +164,9 @@ CREATE TABLE IF NOT EXISTS market_state (
 -- Telegram/web dashboards — the exact level that set the bias, paper
 -- position count, at-stop open risk, and breaker state.
 ALTER TABLE market_state ADD COLUMN IF NOT EXISTS bias_reason TEXT;
+-- Live per-indicator readings (same shape as indicators_snapshot),
+-- refreshed every trigger close — powers the confluence insight cards.
+ALTER TABLE market_state ADD COLUMN IF NOT EXISTS readings JSONB;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_positions INT;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_risk_usd NUMERIC;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS cb_halted BOOLEAN;

@@ -197,12 +197,7 @@ def run() -> None:
                         ), settings), silent=True)
                         logger.info("Regime shift alerted: %s -> %s",
                                     previous_bias_label, current_bias_label)
-                    # Publish structural levels for the manual trade panel
                     levels = manual_entry_levels(bias_result, candles_trigger[-1].close)
-                    store.record_market_state(
-                        last_price=candles_trigger[-1].close, bias=current_bias_label,
-                        bias_reason=bias_result.reason, **levels,
-                    )
                     latest_levels = levels
                     latest_price = candles_trigger[-1].close
 
@@ -211,6 +206,12 @@ def run() -> None:
                         candles_bias, candles_trigger, now=now,
                         config=ind_cfg, ichimoku_variant=ind_cfg["ichimoku_variant"],
                         return_readings=True,
+                    )
+                    # Publish structural levels + live readings for the
+                    # trade panel and the confluence insight cards.
+                    store.record_market_state(
+                        last_price=candles_trigger[-1].close, bias=current_bias_label,
+                        bias_reason=bias_result.reason, readings=readings, **levels,
                     )
                     latest_indicators = {
                         "mode": settings["mode"], "bias_tf": bias_tf, "trigger_tf": trigger_tf,
