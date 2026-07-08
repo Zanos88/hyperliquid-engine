@@ -102,6 +102,30 @@ def test_expand_sweep_cross_product_and_multipliers():
     hybrid = [c for c in combos if c["stop_model"] == "hybrid"]
     assert all(c["atr_multiplier"] is None for c in structural)
     assert all(c["atr_multiplier"] == 1.5 for c in hybrid)
+    # no target_models key -> baseline target model everywhere
+    assert all(c["target_model"] == "nearest_structure" for c in combos)
+    assert all(c["blue_sky_atr_multiplier"] is None for c in combos)
+
+
+def test_expand_sweep_target_model_axis():
+    cfg = {"grids": [{
+        "name": "C",
+        "tf_pairs": [{"bias": "4h", "trigger": "1h"}],
+        "indicator_sets": ["default"],
+        "stop_models": [{"model": "structural"}],
+        "target_models": ["nearest_structure", "fib_extension_preferred", "blue_sky_atr"],
+        "blue_sky_atr_multiplier": 3.0,
+    }]}
+    combos = expand_sweep(cfg)
+    assert [c["target_model"] for c in combos] == [
+        "nearest_structure", "fib_extension_preferred", "blue_sky_atr"]
+    # multiplier only attaches to the blue-sky model
+    assert [c["blue_sky_atr_multiplier"] for c in combos] == [None, None, 3.0]
+    with pytest.raises(SystemExit):
+        expand_sweep({"grids": [{"name": "C", "tf_pairs": [{"bias": "4h", "trigger": "1h"}],
+                                 "indicator_sets": ["default"],
+                                 "stop_models": [{"model": "structural"}],
+                                 "target_models": ["moonshot"]}]})
 
 
 def test_expand_sweep_rejects_bad_entries():
@@ -124,8 +148,11 @@ def test_shipped_sweep_config_expands():
     path = pathlib.Path(__file__).resolve().parent.parent / "sweep_config.yaml"
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
     combos = expand_sweep(cfg)
-    assert len(combos) >= 36                                   # Grid A: 3 TF x 3 ind x 4 stop
-    assert {c["grid"] for c in combos} >= {"A_stop_models"}
+    assert len(combos) == 27                    # Grid C: 3 TF x 3 stop x 3 target
+    assert {c["grid"] for c in combos} == {"C_targets"}
+    assert {c["target_model"] for c in combos} == set(
+        ("nearest_structure", "fib_extension_preferred", "blue_sky_atr"))
+    assert all(not c["fisher4h_entry"] and not c["fisher4h_exit"] for c in combos)
 
 
 # ── 4H Fisher exhaustion exit (backtest-only V2.2 variant) ──

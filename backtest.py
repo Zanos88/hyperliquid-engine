@@ -38,9 +38,11 @@ from ulid import ULID
 from data.feed import Candle, fetch_candles
 from strategy.signals import (
     DEFAULT_ATR_MULTIPLIER,
+    DEFAULT_BLUE_SKY_ATR_MULTIPLIER,
     DEFAULT_INDICATOR_CONFIG,
     FISHER4H_EXHAUSTION_THRESHOLD,
     INDICATOR_NAMES,
+    TARGET_MODELS,
     Signal,
     SignalDirection,
     SuppressedSignal,
@@ -179,6 +181,8 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
                  config: dict, ichimoku_variant: str = "standard",
                  stop_model: str = "structural",
                  atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
+                 target_model: str = "nearest_structure",
+                 blue_sky_atr_multiplier: float = DEFAULT_BLUE_SKY_ATR_MULTIPLIER,
                  fisher4h_entry: bool = False,
                  fisher4h_exit: bool = False,
                  exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
@@ -221,6 +225,8 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
             bias_slice, trig_slice, config=config,
             ichimoku_variant=ichimoku_variant, return_readings=True,
             stop_model=stop_model, atr_multiplier=atr_multiplier,
+            target_model=target_model,
+            blue_sky_atr_multiplier=blue_sky_atr_multiplier,
             fisher4h_entry_filter=fisher4h_entry,
             fisher4h_value=(_fisher4h_at(trigger_candles[i].close_time_ms)
                             if fisher4h_entry else None),
@@ -371,6 +377,8 @@ def run_single(args) -> None:
 
     summary = run_backtest(bias_candles, trigger_candles, config, args.ichimoku_variant,
                            stop_model=args.stop_model, atr_multiplier=args.atr_multiplier,
+                           target_model=args.target_model,
+                           blue_sky_atr_multiplier=args.blue_sky_atr_multiplier,
                            fisher4h_entry=args.fisher4h_entry, fisher4h_exit=args.fisher4h_exit,
                            exhaustion_threshold=args.exhaustion_threshold,
                            candles_4h=candles_4h)
@@ -381,6 +389,8 @@ def run_single(args) -> None:
           + "+".join(n for n, v in config.items() if v)
           + f" | stop: {args.stop_model}"
           + (f"@{args.atr_multiplier}" if args.stop_model == "hybrid" else "")
+          + f" | target: {args.target_model}"
+          + (f"@{args.blue_sky_atr_multiplier}" if args.target_model == "blue_sky_atr" else "")
           + (f" | fisher4h E={args.fisher4h_entry} X={args.fisher4h_exit}"
              f"@{args.exhaustion_threshold}"
              if (args.fisher4h_entry or args.fisher4h_exit) else ""))
@@ -407,6 +417,9 @@ def run_single(args) -> None:
             "kind": "SIMULATED walk-forward via live strategy code",
             "stop_model": args.stop_model,
             "atr_multiplier": args.atr_multiplier if args.stop_model == "hybrid" else None,
+            "target_model": args.target_model,
+            "blue_sky_atr_multiplier": (args.blue_sky_atr_multiplier
+                                        if args.target_model == "blue_sky_atr" else None),
             "fisher4h_entry": args.fisher4h_entry,
             "fisher4h_exit": args.fisher4h_exit,
             "exhaustion_threshold": (args.exhaustion_threshold
@@ -430,6 +443,11 @@ def expand_sweep(cfg: dict) -> list[dict]:
     combos: list[dict] = []
     for grid in cfg["grids"]:
         fisher_variants = grid.get("fisher4h", [{"entry": False, "exit": False}])
+        target_models = grid.get("target_models", ["nearest_structure"])
+        unknown_targets = set(target_models) - set(TARGET_MODELS)
+        if unknown_targets:
+            raise SystemExit(f"unknown target_models: {unknown_targets}")
+        blue_sky_mult = grid.get("blue_sky_atr_multiplier", DEFAULT_BLUE_SKY_ATR_MULTIPLIER)
         for tf in grid["tf_pairs"]:
             validate_combo(tf["bias"], tf["trigger"])
             for ind in grid["indicator_sets"]:
@@ -440,19 +458,23 @@ def expand_sweep(cfg: dict) -> list[dict]:
                             raise SystemExit("hybrid stop_model entries need atr_multiplier")
                     else:
                         mult = None
-                    for fv in fisher_variants:
-                        entry, exit_ = bool(fv.get("entry")), bool(fv.get("exit"))
-                        thresholds = fv.get("thresholds", [FISHER4H_EXHAUSTION_THRESHOLD]) \
-                            if (entry or exit_) else [None]
-                        for thr in thresholds:
-                            combos.append({
-                                "grid": grid["name"],
-                                "bias_tf": tf["bias"], "trigger_tf": tf["trigger"],
-                                "indicators": ind,
-                                "stop_model": sm["model"], "atr_multiplier": mult,
-                                "fisher4h_entry": entry, "fisher4h_exit": exit_,
-                                "exhaustion_threshold": thr,
-                            })
+                    for tm in target_models:
+                        for fv in fisher_variants:
+                            entry, exit_ = bool(fv.get("entry")), bool(fv.get("exit"))
+                            thresholds = fv.get("thresholds", [FISHER4H_EXHAUSTION_THRESHOLD]) \
+                                if (entry or exit_) else [None]
+                            for thr in thresholds:
+                                combos.append({
+                                    "grid": grid["name"],
+                                    "bias_tf": tf["bias"], "trigger_tf": tf["trigger"],
+                                    "indicators": ind,
+                                    "stop_model": sm["model"], "atr_multiplier": mult,
+                                    "target_model": tm,
+                                    "blue_sky_atr_multiplier": (
+                                        blue_sky_mult if tm == "blue_sky_atr" else None),
+                                    "fisher4h_entry": entry, "fisher4h_exit": exit_,
+                                    "exhaustion_threshold": thr,
+                                })
     return combos
 
 
@@ -463,10 +485,21 @@ def _fisher_label(c: dict) -> str:
     return f"{parts}@{c['exhaustion_threshold']}"
 
 
+_TARGET_ABBREV = {"nearest_structure": "nearest", "fib_extension_preferred": "fib_ext",
+                  "blue_sky_atr": "blue_sky"}
+
+
+def _target_label(c: dict) -> str:
+    label = _TARGET_ABBREV[c["target_model"]]
+    if c["blue_sky_atr_multiplier"]:
+        label += f"@{c['blue_sky_atr_multiplier']}"
+    return label
+
+
 def _combo_label(c: dict) -> str:
     stop = c["stop_model"] + (f"@{c['atr_multiplier']}" if c["atr_multiplier"] else "")
     return (f"{c['bias_tf']}/{c['trigger_tf']} | {c['indicators']:<24} | "
-            f"{stop:<14} | f4h {_fisher_label(c):<7}")
+            f"{stop:<14} | tgt {_target_label(c):<12} | f4h {_fisher_label(c):<7}")
 
 
 def run_sweep(args) -> None:
@@ -504,6 +537,9 @@ def run_sweep(args) -> None:
             candles[combo["bias_tf"]], candles[combo["trigger_tf"]], config,
             stop_model=combo["stop_model"],
             atr_multiplier=combo["atr_multiplier"] or DEFAULT_ATR_MULTIPLIER,
+            target_model=combo["target_model"],
+            blue_sky_atr_multiplier=(combo["blue_sky_atr_multiplier"]
+                                     or DEFAULT_BLUE_SKY_ATR_MULTIPLIER),
             fisher4h_entry=combo["fisher4h_entry"],
             fisher4h_exit=combo["fisher4h_exit"],
             exhaustion_threshold=combo["exhaustion_threshold"] or FISHER4H_EXHAUSTION_THRESHOLD,
@@ -518,6 +554,8 @@ def run_sweep(args) -> None:
                 "sweep_id": sweep_id, "grid": combo["grid"],
                 "stop_model": combo["stop_model"],
                 "atr_multiplier": combo["atr_multiplier"],
+                "target_model": combo["target_model"],
+                "blue_sky_atr_multiplier": combo["blue_sky_atr_multiplier"],
                 "fisher4h_entry": combo["fisher4h_entry"],
                 "fisher4h_exit": combo["fisher4h_exit"],
                 "exhaustion_threshold": combo["exhaustion_threshold"],
@@ -532,8 +570,8 @@ def run_sweep(args) -> None:
 
     print("\n=== SIMULATED SWEEP COMPARISON (not live performance) ===")
     print(f"sweep_id={sweep_id} | runs={len(results)}")
-    header = (f"{'grid':<14} {'tfs':<9} {'indicators':<24} {'stop':<14} {'f4h':<8} "
-              f"{'trades':>6} {'W-L':>7} {'netR':>8} {'PF':>6} {'maxDD':>7} "
+    header = (f"{'grid':<14} {'tfs':<9} {'indicators':<24} {'stop':<14} {'target':<13} "
+              f"{'f4h':<8} {'trades':>6} {'W-L':>7} {'netR':>8} {'PF':>6} {'maxDD':>7} "
               f"{'supp_rr':>8} {'supp_exh':>9}")
     print(header)
     print("-" * len(header))
@@ -541,7 +579,8 @@ def run_sweep(args) -> None:
         pf = summary["profit_factor"]
         stop = combo["stop_model"] + (f"@{combo['atr_multiplier']}" if combo["atr_multiplier"] else "")
         print(f"{combo['grid']:<14} {combo['bias_tf'] + '/' + combo['trigger_tf']:<9} "
-              f"{combo['indicators']:<24} {stop:<14} {_fisher_label(combo):<8} "
+              f"{combo['indicators']:<24} {stop:<14} {_target_label(combo):<13} "
+              f"{_fisher_label(combo):<8} "
               f"{len(summary['trades']):>6} {str(summary['wins']) + '-' + str(summary['losses']):>7} "
               f"{summary['net_r']:>+8.2f} {(f'{pf:.2f}' if pf is not None else '-'):>6} "
               f"{summary['max_drawdown_r']:>7.2f} {summary['suppressed_rr']:>8} "
@@ -560,6 +599,9 @@ def main() -> None:
     ap.add_argument("--ichimoku-variant", default="standard")
     ap.add_argument("--stop-model", default="structural", choices=("structural", "hybrid"))
     ap.add_argument("--atr-multiplier", type=float, default=DEFAULT_ATR_MULTIPLIER)
+    ap.add_argument("--target-model", default="nearest_structure", choices=TARGET_MODELS)
+    ap.add_argument("--blue-sky-atr-multiplier", type=float,
+                    default=DEFAULT_BLUE_SKY_ATR_MULTIPLIER)
     ap.add_argument("--fisher4h-entry", action="store_true",
                     help="suppress entries when 4H Fisher already extended in signal direction")
     ap.add_argument("--fisher4h-exit", action="store_true",

@@ -1,41 +1,29 @@
-# V2.2 backtest sweep — curated, axis-isolated (user decision 2026-07-08:
-# ~90 runs, not the full 360-run cross; a full cross is a YAML edit away).
+# V2.3 backtest sweep — Grid C: target model x stop model, axis-isolated.
 #
-# Grid A isolates the STOP MODEL axis against clean baselines.
-# Grid B isolates the FISHER-4H EXHAUSTION axis (entry filter / exit
-# signal / both, thresholds 1.5/2.0/2.5) on the default indicator set;
-# its baselines (fisher off) are Grid A's default-indicator rows.
-# Window note: each TF pair is capped by Hyperliquid's 5,000-candle
-# retention on its TRIGGER timeframe (1h -> ~208d, 5m -> ~17d,
-# 4h -> ~833d / ~2.3yr — the long-horizon pair).
-sweep_name: v2_2_stop_fisher4h
+# Grids A (stop models) and B (Fisher-4H) are ANSWERED — results in
+# docs/V2_2_STOP_SWEEP_FISHER4H.md, configs in git history (ec81c40 /
+# c0e91c4). Per those results this grid fixes: indicators = default
+# (RSI/all-5 gave no benefit), Fisher-4H = off (entry filter hurt, exit
+# never fires), hybrid@2.0 dropped (behaviorally identical to @1.5).
+#
+# 3 TF pairs x 3 stop models x 3 target models = 27 runs.
+# blue_sky_atr_multiplier 3.0 is an unswept first guess (V2.3 open
+# item 1) — bracket it in a follow-up only if blue_sky_atr shows edge.
+sweep_name: v2_3_target_extension
 grids:
-  - name: A_stop_models
+  - name: C_targets
     tf_pairs:
       - {bias: 4h, trigger: 1h}
       - {bias: 15m, trigger: 5m}
       - {bias: 1d, trigger: 4h}
     indicator_sets:
       - default                      # bias_sr + fisher + obv
-      - "bias_sr,fisher,obv,rsi"     # default + rsi
-      - all                          # all five
     stop_models:
-      - {model: structural}          # legacy, current live behavior
+      - {model: structural}          # current live behavior
       - {model: hybrid, atr_multiplier: 1.0}
       - {model: hybrid, atr_multiplier: 1.5}
-      - {model: hybrid, atr_multiplier: 2.0}
-
-  - name: B_fisher4h
-    tf_pairs:
-      - {bias: 4h, trigger: 1h}
-      - {bias: 15m, trigger: 5m}
-      - {bias: 1d, trigger: 4h}
-    indicator_sets:
-      - default
-    stop_models:
-      - {model: structural}
-      - {model: hybrid, atr_multiplier: 1.5}
-    fisher4h:                        # 2.0 = user's hard rule; 1.5/2.5 = sensitivity brackets
-      - {entry: true, exit: false, thresholds: [1.5, 2.0, 2.5]}
-      - {entry: false, exit: true, thresholds: [1.5, 2.0, 2.5]}
-      - {entry: true, exit: true, thresholds: [1.5, 2.0, 2.5]}
+    target_models:                   # cumulative ladder: 2-vs-1 isolates
+      - nearest_structure            #   extension effect, 3-vs-2 isolates
+      - fib_extension_preferred      #   the blue-sky fallback
+      - blue_sky_atr
+    blue_sky_atr_multiplier: 3.0
