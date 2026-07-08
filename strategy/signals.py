@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Sequence
 
 from data.feed import Candle
+from strategy.atr import wilder_atr
 from strategy.bias_4h import Bias, BiasResult, compute_bias
 from strategy.ichimoku import evaluate_ichimoku
 from strategy.rsi import Vote, evaluate_rsi
@@ -20,6 +21,8 @@ from strategy.trigger_1h import TriggerDirection, TriggerResult, evaluate_trigge
 
 MIN_REWARD_RISK = 2.0
 STRUCTURAL_STOP_BUFFER = 0.0015  # 0.15% beyond the S/R/swing level
+DEFAULT_ATR_MULTIPLIER = 1.5     # hybrid stop's ATR floor factor (sweep-tuned, not final)
+STOP_MODELS = ("structural", "hybrid")
 
 # All confluence indicators, independently toggleable. Defaults preserve
 # the original 3-indicator behavior exactly (RSI/Ichimoku off until the
@@ -52,6 +55,40 @@ class SuppressedSignal:
     direction: SignalDirection
     reward_risk: float
     reason: str
+    kind: str = "rr"  # "rr" | "fisher4h_exhaustion" — lets callers count suppression classes separately
+
+
+def resolve_stop(
+    direction: SignalDirection,
+    entry_price: float,
+    structural_stop: float,
+    trigger_candles: Sequence[Candle],
+    stop_model: str = "structural",
+    atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
+) -> float:
+    """Final stop price under the configured stop model.
+
+    "structural": the buffered S/R level unchanged (live default).
+    "hybrid": the WIDER of structural vs an ATR floor — min() for longs,
+    max() for shorts — so the stop clears trigger-TF noise (V2.2: the
+    2026-07-08 backtest showed structural stops of 0.15-0.35% of price
+    resolving inside a single trigger bar). Widens only, never tightens;
+    falls back to structural when ATR history is insufficient (ATR==0).
+
+    Sizing MUST consume the value returned here via Signal.stop — never
+    the pre-hybrid structural level — or realized R drifts from nominal
+    R (the R-Drift trap from the V2.2 research breakdown).
+    """
+    if stop_model not in STOP_MODELS:
+        raise ValueError(f"unknown stop_model {stop_model!r} — allowed: {STOP_MODELS}")
+    if stop_model == "structural":
+        return structural_stop
+    atr = wilder_atr(trigger_candles)[-1] if trigger_candles else 0.0
+    if atr <= 0.0:
+        return structural_stop
+    if direction == SignalDirection.LONG:
+        return min(structural_stop, entry_price - atr_multiplier * atr)
+    return max(structural_stop, entry_price + atr_multiplier * atr)
 
 
 def _next_opposing_level_above(bias_result: BiasResult, price: float) -> float | None:
@@ -155,12 +192,19 @@ def evaluate_signal(
     config: dict | None = None,
     ichimoku_variant: str = "standard",
     return_readings: bool = False,
+    stop_model: str = "structural",
+    atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
 ):
     """Full confluence + exit + R:R gate.
 
     Returns Signal | SuppressedSignal | None (default), or a
     (result, readings) tuple when return_readings=True — readings are the
     per-indicator snapshot destined for indicators_snapshot JSONB.
+
+    stop_model/atr_multiplier select the stop construction (see
+    resolve_stop). Defaults preserve the pre-V2.2 structural-only
+    behavior exactly — the live engine passes nothing here until the
+    sweep results are reviewed (user decision 2026-07-08).
     """
     direction, readings, bias_result = evaluate_confluence(
         candles_4h, candles_1h, config=config, ichimoku_variant=ichimoku_variant,
@@ -180,17 +224,23 @@ def evaluate_signal(
         support = _nearest_support(bias_result, entry_price)
         if support is None:
             return _ret(None)  # no structural level to anchor a stop — never a bare-percentage stop
-        stop = support * (1 - STRUCTURAL_STOP_BUFFER)
+        structural_stop = support * (1 - STRUCTURAL_STOP_BUFFER)
         target = _next_opposing_level_above(bias_result, entry_price)
     else:
         resistance = _nearest_resistance(bias_result, entry_price)
         if resistance is None:
             return _ret(None)
-        stop = resistance * (1 + STRUCTURAL_STOP_BUFFER)
+        structural_stop = resistance * (1 + STRUCTURAL_STOP_BUFFER)
         target = _next_opposing_level_below(bias_result, entry_price)
 
     if target is None:
         return _ret(None)  # no opposing structural level to target
+
+    # R:R, the Signal, and (downstream) sizing all use the FINAL resolved
+    # stop — a hybrid widening must flow through everything or realized R
+    # silently drifts from nominal R.
+    stop = resolve_stop(direction, entry_price, structural_stop, candles_1h,
+                        stop_model=stop_model, atr_multiplier=atr_multiplier)
 
     risk = abs(entry_price - stop)
     reward = abs(target - entry_price)
