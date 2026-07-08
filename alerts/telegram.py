@@ -33,7 +33,7 @@ class TelegramClient:
             )
 
     def send(self, text: str, timeout: float = 10.0, reply_markup: dict | None = None,
-             parse_mode: str | None = "HTML") -> bool:
+             parse_mode: str | None = "HTML", silent: bool = False) -> bool:
         """Send a message; on failure log a WARNING and return False.
 
         Never a silent except — a swallowed delivery failure would defeat
@@ -48,6 +48,10 @@ class TelegramClient:
         payload: dict = {"chat_id": self.chat_id, "text": text}
         if parse_mode is not None:
             payload["parse_mode"] = parse_mode  # HTML: enables <b>/<i> in alert templates
+        if silent:
+            # Severity tiers 1-2 (heartbeat, daily summary, regime shift):
+            # delivered without a notification ping (Aetheris tier table).
+            payload["disable_notification"] = True
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         try:

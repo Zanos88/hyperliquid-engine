@@ -107,7 +107,7 @@ def format_entry_signal(signal: Signal, quantity: float, risk_pct: float,
     trigger_tf = context.get("trigger_tf", "trigger")
 
     lines = [
-        f"\U0001F3AF <b>SIGNAL — {action} BTC-PERP ({side})</b>",
+        f"\U0001F3AF <b>[T3 SETUP] SIGNAL — {action} BTC-PERP ({side})</b>",
         "",
         "\U0001F4CD <b>Direction</b>",
         f"{action} {side.lower()} @ ~${signal.entry:,.2f} (market entry on {trigger_tf} close)",
@@ -147,7 +147,7 @@ def format_exit_alert(closed: ClosedPosition, running_daily_pnl: float,
     outcome = "TARGET HIT" if closed.exit_reason == "target" else "STOP HIT"
 
     lines = [
-        f"{emoji} <b>CLOSED {side} ({closing_action}) — {outcome}</b>",
+        f"{emoji} <b>[T4 RISK] CLOSED {side} ({closing_action}) — {outcome}</b>",
         "",
         "💰 <b>Result</b>",
         f"Entry ${closed.signal.entry:,.2f} → Exit ${closed.exit_price:,.2f} "
@@ -171,7 +171,7 @@ def format_daily_summary(stats: dict, current_bias: str, halt_events_today: int,
     win_rate_str = f"{win_rate:.0%}" if win_rate is not None else "n/a"
     day_start = stats["equity"] - stats["daily_pnl"]
     lines = [
-        "\U0001F4CA <b>DAILY SUMMARY</b> (00:00 UTC)",
+        "\U0001F4CA <b>[T2] DAILY SUMMARY</b> (00:00 UTC)",
         "",
         f"Signals fired: {stats['signals_fired']} | Closed: {stats['closed_trades']} | Win rate: {win_rate_str}",
         f"Equity: ${day_start:,.2f} → ${stats['equity']:,.2f} "
@@ -191,7 +191,7 @@ def format_heartbeat(current_bias: str, last_data_timestamp: datetime,
     strategy is noticed by this content."""
     context = context or {}
     status = "\U0001F7E2 alive" if feed_errors_since_last == 0 else "\U0001F7E1 alive (with feed errors)"
-    lines = [f"\U0001F493 <b>HEARTBEAT</b>: {status}",
+    lines = [f"\U0001F493 <b>[T2] HEARTBEAT</b>: {status}",
              "",
              "\U0001F4CA <b>Market</b>",
              f"Bias: {current_bias}"]
@@ -229,7 +229,7 @@ def format_heartbeat(current_bias: str, last_data_timestamp: datetime,
 def format_halt_alert(daily_pnl_pct: float, context: dict | None = None) -> str:
     context = context or {}
     lines = [
-        "\U0001F6D1 <b>CIRCUIT BREAKER HALT</b>",
+        "\U0001F6D1 <b>[T5 HALT] CIRCUIT BREAKER</b>",
         "",
         f"Daily P&L reached <b>{daily_pnl_pct:+.2%}</b>, breaching the -2.5% internal buffer "
         "(inside the challenge's real -3% daily limit).",
@@ -243,4 +243,29 @@ def format_halt_alert(daily_pnl_pct: float, context: dict | None = None) -> str:
         lines.append(f"Open positions: {open_n} (existing brackets stay managed)")
     lines.extend(_floor_lines(context))
     lines.append("New signal generation halted until the next 00:00 UTC rollover.")
+    return "\n".join(lines)
+
+
+def format_regime_shift(old_bias: str, new_bias: str, reason: str,
+                        last_price: float | None, context: dict | None = None) -> str:
+    """T2 Regime Shift — the bias-layer state changed. Delivered SILENTLY
+    (no notification ping); states the EXACT level/condition that set the
+    new bias, never just the label."""
+    context = context or {}
+    dot = {"BULLISH": "\U0001F7E2", "BEARISH": "\U0001F534", "NEUTRAL": "⚪"}.get(new_bias, "\U0001F535")
+    lines = [
+        f"{dot} <b>[T2 REGIME] BIAS SHIFT: {old_bias} → {new_bias}</b>",
+        "",
+        f"Why: {reason}",
+    ]
+    if last_price is not None:
+        lines.append(f"Last price: ${last_price:,.2f}")
+    levels = context.get("levels") or {}
+    ls, lt = levels.get("long_stop"), levels.get("long_target")
+    if ls and lt:
+        lines.append(f"Structural long now: stop ${ls:,.0f} / target ${lt:,.0f}")
+    ss, st = levels.get("short_stop"), levels.get("short_target")
+    if ss and st:
+        lines.append(f"Structural short now: stop ${ss:,.0f} / target ${st:,.0f}")
+    lines.extend(_floor_lines(context))
     return "\n".join(lines)

@@ -26,6 +26,7 @@ from alerts.formats import (
     format_exit_alert,
     format_halt_alert,
     format_heartbeat,
+    format_regime_shift,
 )
 from alerts.telegram import TelegramClient
 from data.feed import fetch_candles
@@ -143,7 +144,7 @@ def run() -> None:
                 settings["active_bias_tf"], settings["active_trigger_tf"])
     sent = telegram.send(decorate(
         format_heartbeat(current_bias_label, last_data_timestamp, 0,
-                         context=alert_context(settings=settings)), settings))
+                         context=alert_context(settings=settings)), settings), silent=True)
     logger.info("startup heartbeat sent=%s", sent)
 
     while True:
@@ -185,7 +186,17 @@ def run() -> None:
                         fractal_width=cfg["strategy"]["fractal_width"],
                         sr_lookback=cfg["strategy"]["sr_lookback"],
                     )
+                    previous_bias_label = current_bias_label
                     current_bias_label = bias_result.bias.value
+                    if previous_bias_label != current_bias_label:
+                        # T2 Regime Shift: fires once per bias change, silent
+                        # delivery, with the exact level/condition (WHY).
+                        telegram.send(decorate(format_regime_shift(
+                            previous_bias_label, current_bias_label, bias_result.reason,
+                            candles_trigger[-1].close, context=alert_context(settings=settings),
+                        ), settings), silent=True)
+                        logger.info("Regime shift alerted: %s -> %s",
+                                    previous_bias_label, current_bias_label)
                     # Publish structural levels for the manual trade panel
                     levels = manual_entry_levels(bias_result, candles_trigger[-1].close)
                     store.record_market_state(
@@ -263,7 +274,8 @@ def run() -> None:
 
         if now.date() > last_day:
             telegram.send(decorate(
-                format_daily_summary(ledger.today_stats(), current_bias_label, halt_events_today), settings))
+                format_daily_summary(ledger.today_stats(), current_bias_label, halt_events_today), settings),
+                silent=True)
             ledger.start_new_day()
             breaker.reset_for_new_day(ledger.equity)
             halt_events_today = 0
@@ -273,7 +285,7 @@ def run() -> None:
         if (now - last_heartbeat_at) >= timedelta(hours=cfg["telegram"]["heartbeat_interval_hours"]):
             telegram.send(decorate(
                 format_heartbeat(current_bias_label, last_data_timestamp, feed_errors_since_heartbeat,
-                                 context=alert_context(settings=settings)), settings))
+                                 context=alert_context(settings=settings)), settings), silent=True)
             last_heartbeat_at = now
             feed_errors_since_heartbeat = 0
 
