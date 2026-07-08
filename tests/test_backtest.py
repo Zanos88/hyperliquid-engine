@@ -1,12 +1,20 @@
 """Backtest harness acceptance tests: touch-based exits, stop-first
-ambiguity rule, fee math, no-lookahead bias slicing, unresolved handling."""
+ambiguity rule, fee math, no-lookahead bias slicing, unresolved handling,
+sweep expansion, and real return-stats computation."""
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 import pytest
 
-from backtest import TAKER_FEE, bias_slice_no_lookahead, simulate_outcome
+from backtest import (
+    TAKER_FEE,
+    bias_slice_no_lookahead,
+    expand_sweep,
+    log_return_stats,
+    simulate_outcome,
+)
 from data.feed import Candle
 from strategy.signals import Signal, SignalDirection
 
@@ -76,3 +84,62 @@ def test_bias_slice_never_looks_ahead():
     sliced = bias_slice_no_lookahead(bias, trigger_close_ms)
     assert len(sliced) == 5                                    # bars closed at 1h..5h only
     assert all(c.close_time_ms <= trigger_close_ms for c in sliced)
+
+
+# ── sweep expansion ──
+
+def test_expand_sweep_cross_product_and_multipliers():
+    cfg = {"grids": [{
+        "name": "A",
+        "tf_pairs": [{"bias": "4h", "trigger": "1h"}, {"bias": "1d", "trigger": "4h"}],
+        "indicator_sets": ["default", "all"],
+        "stop_models": [{"model": "structural"},
+                        {"model": "hybrid", "atr_multiplier": 1.5}],
+    }]}
+    combos = expand_sweep(cfg)
+    assert len(combos) == 2 * 2 * 2
+    structural = [c for c in combos if c["stop_model"] == "structural"]
+    hybrid = [c for c in combos if c["stop_model"] == "hybrid"]
+    assert all(c["atr_multiplier"] is None for c in structural)
+    assert all(c["atr_multiplier"] == 1.5 for c in hybrid)
+
+
+def test_expand_sweep_rejects_bad_entries():
+    with pytest.raises(SystemExit):                            # hybrid needs a multiplier
+        expand_sweep({"grids": [{"name": "A",
+                                 "tf_pairs": [{"bias": "4h", "trigger": "1h"}],
+                                 "indicator_sets": ["default"],
+                                 "stop_models": [{"model": "hybrid"}]}]})
+    with pytest.raises(ValueError):                            # bias must exceed trigger
+        expand_sweep({"grids": [{"name": "A",
+                                 "tf_pairs": [{"bias": "1h", "trigger": "4h"}],
+                                 "indicator_sets": ["default"],
+                                 "stop_models": [{"model": "structural"}]}]})
+
+
+def test_shipped_sweep_config_expands():
+    import pathlib
+
+    import yaml
+    path = pathlib.Path(__file__).resolve().parent.parent / "sweep_config.yaml"
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    combos = expand_sweep(cfg)
+    assert len(combos) >= 36                                   # Grid A: 3 TF x 3 ind x 4 stop
+    assert {c["grid"] for c in combos} >= {"A_stop_models"}
+
+
+# ── return statistics (real data replaces the rejected external table) ──
+
+def test_log_return_stats_alternating_series():
+    closes = [100.0, 110.0, 100.0]                             # rets: +ln1.1, -ln1.1
+    candles = [candle(i, c, c, c, c) for i, c in enumerate(closes)]
+    stats = log_return_stats(candles)
+    r = math.log(1.1)
+    assert stats["n"] == 2
+    assert stats["mean"] == pytest.approx(0.0)
+    assert stats["stdev"] == pytest.approx(r * math.sqrt(2))   # sample stdev, n-1
+    assert stats["excess_kurtosis"] == pytest.approx(-2.0)     # two-point symmetric dist
+
+
+def test_log_return_stats_insufficient():
+    assert log_return_stats([candle(0, 100, 100, 100, 100)]) == {"n": 0}

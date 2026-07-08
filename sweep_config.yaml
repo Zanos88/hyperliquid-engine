@@ -1,0 +1,23 @@
+# V2.2 backtest sweep — curated, axis-isolated (user decision 2026-07-08:
+# ~90 runs, not the full 360-run cross; a full cross is a YAML edit away).
+#
+# Grid A isolates the STOP MODEL axis against clean baselines.
+# Window note: each TF pair is capped by Hyperliquid's 5,000-candle
+# retention on its TRIGGER timeframe (1h -> ~208d, 5m -> ~17d,
+# 4h -> ~833d / ~2.3yr — the long-horizon pair).
+sweep_name: v2_2_stop_fisher4h
+grids:
+  - name: A_stop_models
+    tf_pairs:
+      - {bias: 4h, trigger: 1h}
+      - {bias: 15m, trigger: 5m}
+      - {bias: 1d, trigger: 4h}
+    indicator_sets:
+      - default                      # bias_sr + fisher + obv
+      - "bias_sr,fisher,obv,rsi"     # default + rsi
+      - all                          # all five
+    stop_models:
+      - {model: structural}          # legacy, current live behavior
+      - {model: hybrid, atr_multiplier: 1.0}
+      - {model: hybrid, atr_multiplier: 1.5}
+      - {model: hybrid, atr_multiplier: 2.0}
