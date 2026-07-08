@@ -28,6 +28,15 @@ STOP_MODELS = ("structural", "hybrid")
 # the sweep brackets it with 1.5/2.5 as sensitivity checks.
 FISHER4H_EXHAUSTION_THRESHOLD = 2.0
 
+# V2.3 target models. The V2.2 sweep showed nearest-structure targets vs
+# the R:R>=2 gate are the system's binding constraint (0 trades in 2.3yr
+# on 1d/4h) — these extend targets the same way hybrid stops widened
+# stops. Live default stays nearest_structure until the sweep is
+# reviewed (same rollout discipline as stop models).
+TARGET_MODELS = ("nearest_structure", "fib_extension_preferred", "blue_sky_atr")
+FIB_EXTENSION_KEYS = ("1.272", "1.618")   # keys in BiasResult.fib_levels
+DEFAULT_BLUE_SKY_ATR_MULTIPLIER = 3.0     # unswept first guess (V2.3 open item 1)
+
 # All confluence indicators, independently toggleable. Defaults preserve
 # the original 3-indicator behavior exactly (RSI/Ichimoku off until the
 # user enables them via /settings -> Indicators).
@@ -105,6 +114,73 @@ def _next_opposing_level_below(bias_result: BiasResult, price: float) -> float |
     candidates = [lv for lv in bias_result.fib_levels.values() if lv < price]
     candidates += [lv.price for lv in bias_result.sr_levels if lv.kind == "support" and lv.price < price]
     return max(candidates) if candidates else None
+
+
+def resolve_target(
+    direction: SignalDirection,
+    entry_price: float,
+    bias_result: BiasResult,
+    trigger_candles: Sequence[Candle],
+    target_model: str = "nearest_structure",
+    blue_sky_atr_multiplier: float = DEFAULT_BLUE_SKY_ATR_MULTIPLIER,
+) -> float | None:
+    """Final target price under the configured target model; None means
+    "no defensible target" and the caller drops the signal (unchanged
+    from pre-V2.3 behavior).
+
+    "nearest_structure": today's behavior — the nearest opposing level
+    (fibs + S/R pooled), unchanged.
+    "fib_extension_preferred": if a Fib extension (1.272/1.618) lies
+    beyond the nearest opposing level, prefer it — the farther of the
+    two candidates — but never through an intervening structural S/R
+    level between them (cap at that level instead).
+    "blue_sky_atr": fib_extension_preferred, plus a volatility
+    projection (entry +/- multiplier*ATR on the trigger TF) when NO
+    opposing level exists at all — price beyond all known reference
+    levels. Cumulative by design so Grid C isolates each increment:
+    model2-vs-1 = extension effect, model3-vs-2 = blue-sky effect.
+    Returns None (no bare guess) if ATR history is insufficient.
+    """
+    if target_model not in TARGET_MODELS:
+        raise ValueError(f"unknown target_model {target_model!r} — allowed: {TARGET_MODELS}")
+
+    is_long = direction == SignalDirection.LONG
+    nearest = (_next_opposing_level_above if is_long else _next_opposing_level_below)(
+        bias_result, entry_price)
+
+    if target_model == "nearest_structure":
+        return nearest
+
+    if nearest is None:
+        # no opposing level anywhere (extensions are part of the nearest
+        # pool, so none exist either) — blue sky, or no target at all
+        if target_model != "blue_sky_atr":
+            return None
+        atr = wilder_atr(trigger_candles)[-1] if trigger_candles else 0.0
+        if atr <= 0.0:
+            return None
+        offset = blue_sky_atr_multiplier * atr
+        return entry_price + offset if is_long else entry_price - offset
+
+    # extension preference: nearest fib extension strictly beyond the
+    # nearest opposing level, capped at any structural S/R between them
+    extensions = [bias_result.fib_levels[k] for k in FIB_EXTENSION_KEYS
+                  if k in bias_result.fib_levels]
+    if is_long:
+        beyond = [e for e in extensions if e > nearest]
+        if not beyond:
+            return nearest
+        ext = min(beyond)
+        bounds = [lv.price for lv in bias_result.sr_levels
+                  if lv.kind == "resistance" and nearest < lv.price < ext]
+        return min(bounds) if bounds else ext
+    beyond = [e for e in extensions if e < nearest]
+    if not beyond:
+        return nearest
+    ext = max(beyond)
+    bounds = [lv.price for lv in bias_result.sr_levels
+              if lv.kind == "support" and ext < lv.price < nearest]
+    return max(bounds) if bounds else ext
 
 
 def _nearest_support(bias_result: BiasResult, price: float) -> float | None:
@@ -198,6 +274,8 @@ def evaluate_signal(
     return_readings: bool = False,
     stop_model: str = "structural",
     atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
+    target_model: str = "nearest_structure",
+    blue_sky_atr_multiplier: float = DEFAULT_BLUE_SKY_ATR_MULTIPLIER,
     fisher4h_entry_filter: bool = False,
     fisher4h_value: float | None = None,
     exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
@@ -209,9 +287,11 @@ def evaluate_signal(
     per-indicator snapshot destined for indicators_snapshot JSONB.
 
     stop_model/atr_multiplier select the stop construction (see
-    resolve_stop). Defaults preserve the pre-V2.2 structural-only
-    behavior exactly — the live engine passes nothing here until the
-    sweep results are reviewed (user decision 2026-07-08).
+    resolve_stop); target_model/blue_sky_atr_multiplier select the
+    target construction (see resolve_target). Defaults preserve the
+    pre-V2.2/V2.3 nearest-structure behavior exactly — the live engine
+    passes nothing here until sweep results are reviewed (user
+    decisions 2026-07-08).
 
     fisher4h_entry_filter (BACKTEST-ONLY until sweep results say
     otherwise): suppress a fresh signal when the 4H Fisher is already
@@ -240,16 +320,17 @@ def evaluate_signal(
         if support is None:
             return _ret(None)  # no structural level to anchor a stop — never a bare-percentage stop
         structural_stop = support * (1 - STRUCTURAL_STOP_BUFFER)
-        target = _next_opposing_level_above(bias_result, entry_price)
     else:
         resistance = _nearest_resistance(bias_result, entry_price)
         if resistance is None:
             return _ret(None)
         structural_stop = resistance * (1 + STRUCTURAL_STOP_BUFFER)
-        target = _next_opposing_level_below(bias_result, entry_price)
 
+    target = resolve_target(direction, entry_price, bias_result, candles_1h,
+                            target_model=target_model,
+                            blue_sky_atr_multiplier=blue_sky_atr_multiplier)
     if target is None:
-        return _ret(None)  # no opposing structural level to target
+        return _ret(None)  # no defensible target under this model
 
     # R:R, the Signal, and (downstream) sizing all use the FINAL resolved
     # stop — a hybrid widening must flow through everything or realized R
