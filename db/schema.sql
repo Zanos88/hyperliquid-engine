@@ -171,6 +171,38 @@ ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_positions INT;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_risk_usd NUMERIC;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS cb_halted BOOLEAN;
 
+-- Backtest results (SIMULATED data — kept strictly separate from the
+-- live/forward tables; every consumer must label these as simulation).
+CREATE TABLE IF NOT EXISTS backtest_runs (
+    run_id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    bias_tf TEXT NOT NULL,
+    trigger_tf TEXT NOT NULL,
+    indicator_config JSONB NOT NULL,
+    candles_from TIMESTAMPTZ,
+    candles_to TIMESTAMPTZ,
+    bars_evaluated INT,
+    trades INT, wins INT, losses INT, unresolved INT, suppressed_rr INT,
+    gross_r NUMERIC, net_r NUMERIC, avg_net_r NUMERIC,
+    win_rate NUMERIC, profit_factor NUMERIC, max_drawdown_r NUMERIC,
+    fees_model TEXT,
+    notes TEXT
+);
+CREATE TABLE IF NOT EXISTS backtest_trades (
+    id BIGSERIAL PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES backtest_runs(run_id) ON DELETE CASCADE,
+    entry_ts TIMESTAMPTZ,
+    exit_ts TIMESTAMPTZ,
+    direction TEXT,
+    entry NUMERIC, stop NUMERIC, target NUMERIC,
+    reward_risk NUMERIC,
+    exit_reason TEXT,          -- target | stop | unresolved
+    gross_r NUMERIC, net_r NUMERIC,
+    bars_held INT,
+    indicators_snapshot JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_run ON backtest_trades (run_id);
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard
