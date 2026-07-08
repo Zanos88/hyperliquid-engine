@@ -21,6 +21,7 @@ from __future__ import annotations
 import hmac
 import os
 import time
+import traceback
 from hashlib import sha256
 
 from pathlib import Path
@@ -86,8 +87,27 @@ def _auth(request: Request) -> JSONResponse | None:
 
 
 def _query(sql: str, params: tuple = ()) -> list[tuple]:
-    with psycopg.connect(_env("DATABASE_URL"), autocommit=True, connect_timeout=8) as conn:
-        return conn.execute(sql, params).fetchall()
+    try:
+        with psycopg.connect(_env("DATABASE_URL"), autocommit=True, connect_timeout=8) as conn:
+            return conn.execute(sql, params).fetchall()
+    except Exception:
+        # print -> Vercel runtime logs; silent failures made the first
+        # outage undiagnosable, never again.
+        traceback.print_exc()
+        raise
+
+
+@app.get("/api/health")
+async def health() -> JSONResponse:
+    """Unauthenticated connectivity probe. Leaks NOTHING but a boolean and
+    an exception class name — no data, no config values, no hostnames."""
+    if not _env("DATABASE_URL"):
+        return JSONResponse({"db": "error", "type": "DatabaseUrlNotSet"}, status_code=503)
+    try:
+        _query("SELECT 1")
+        return JSONResponse({"db": "ok"})
+    except Exception as exc:
+        return JSONResponse({"db": "error", "type": type(exc).__name__}, status_code=503)
 
 
 @app.post("/api/login")
@@ -114,10 +134,12 @@ async def status(request: Request) -> JSONResponse:
                                open_positions, open_risk_usd, cb_halted
                         FROM portfolio_telemetry ORDER BY ts DESC, id DESC LIMIT 1""")
         ms = _query("""SELECT ts, last_price, bias, bias_reason, long_stop, long_target,
-                              short_stop, short_target FROM market_state WHERE id = 1""")
+                              short_stop, short_target, readings FROM market_state WHERE id = 1""")
         st = _query("SELECT state, updated_at FROM engine_state WHERE id = 1")
         ss = _query("""SELECT mode, prod_bias_tf, prod_trigger_tf, test_bias_tf, test_trigger_tf
                        FROM strategy_settings WHERE id = 1""")
+        sig_today = _query("""SELECT count(*) FROM pending_signals
+                              WHERE created_at >= date_trunc('day', now())""")
     except Exception:
         return JSONResponse({"error": "database_unavailable"}, status_code=503)
 
@@ -135,7 +157,7 @@ async def status(request: Request) -> JSONResponse:
             "cb_halted": cb,
         }
     if ms:
-        ts, last_price, bias, reason, ls, lt, ss_, st_ = ms[0]
+        ts, last_price, bias, reason, ls, lt, ss_, st_, readings = ms[0]
         out["market"] = {
             "ts": ts.isoformat(), "last_price": float(last_price), "bias": bias,
             "bias_reason": reason,
@@ -143,7 +165,10 @@ async def status(request: Request) -> JSONResponse:
             "long_target": float(lt) if lt is not None else None,
             "short_stop": float(ss_) if ss_ is not None else None,
             "short_target": float(st_) if st_ is not None else None,
+            "readings": readings,   # live per-indicator votes/values (JSONB)
         }
+    if sig_today:
+        out["signals_today"] = int(sig_today[0][0])
     if st:
         out["engine_state"] = st[0][0]
     if ss:

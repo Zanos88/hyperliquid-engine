@@ -71,6 +71,12 @@
     <div class="row"><span>Mode / TF</span><span id="mode">—</span></div>
   </div>
   <div class="card">
+    <h2>Confluence — live indicator votes</h2>
+    <ul id="conf"><li class="dim">waiting for engine readings…</li></ul>
+    <div id="confsum" style="margin-top:8px;font-weight:600">—</div>
+    <div class="row" style="margin-top:4px"><span>Signals today</span><span id="sigtoday">—</span></div>
+  </div>
+  <div class="card">
     <h2>Position</h2>
     <div class="row"><span>Open (paper)</span><span id="posn">—</span></div>
     <div class="row"><span>Open risk</span><span id="orisk">—</span></div>
@@ -131,8 +137,51 @@ async function refresh(){
       ? `stop ${usd(m.long_stop)} / target ${usd(m.long_target)}` : "no valid structure";
   }
   if (s){ $("mode").textContent = `${s.mode} · ${s.active_bias_tf}/${s.active_trigger_tf}`; }
+  renderConfluence(m && m.readings, d.signals_today, s);
   $("upd").textContent = new Date().toLocaleTimeString();
   drawSpark(); loadEvents();
+}
+
+const IND_LABEL = {bias_sr:"Bias (S/R+Fib)", fisher:"Fisher", obv:"OBV", rsi:"RSI", ichimoku:"Ichimoku"};
+
+function readingDetail(name, r){
+  if (name === "bias_sr")  return r.bias || "";
+  if (name === "fisher")   return r.cross === "none" ? "no cross" : `${r.cross} cross` + (typeof r.value === "number" ? ` (${r.value.toFixed(2)})` : "");
+  if (name === "obv")      return r.state || "";
+  if (name === "rsi")      return typeof r.value === "number" ? r.value.toFixed(1) : "";
+  if (name === "ichimoku") return `${r.variant || "standard"}` + (typeof r.tenkan === "number" ? ` T${Math.round(r.tenkan)}/K${Math.round(r.kijun)}` : "");
+  return "";
+}
+
+function renderConfluence(readings, sigToday, s){
+  $("sigtoday").textContent = sigToday ?? "—";
+  if (!readings){ return; }
+  const rows = [], votes = [], blockers = [];
+  for (const [name, r] of Object.entries(readings)){
+    const arrow = r.vote === "LONG" ? "▲" : r.vote === "SHORT" ? "▼" : "–";
+    const cls   = r.vote === "LONG" ? "pos" : r.vote === "SHORT" ? "neg" : "dim";
+    const en    = r.enabled ? "✅" : "❌";
+    rows.push(`<li>${en} ${IND_LABEL[name] || name} <span class="${cls}">${arrow} ${r.vote}</span> <span class="dim">${readingDetail(name, r)}</span></li>`);
+    if (r.enabled){
+      votes.push(r.vote);
+      if (r.vote === "NONE") blockers.push(IND_LABEL[name] || name);
+    }
+  }
+  $("conf").innerHTML = rows.join("");
+  const n = votes.length;
+  const longs = votes.filter(v => v === "LONG").length;
+  const shorts = votes.filter(v => v === "SHORT").length;
+  let sum;
+  if (n === 0) sum = "no indicators enabled";
+  else if (longs === n) sum = `ALL ${n} aligned LONG — signal fires on next new alignment`;
+  else if (shorts === n) sum = `ALL ${n} aligned SHORT — signal fires on next new alignment`;
+  else {
+    const lead = longs >= shorts ? `${longs}/${n} LONG` : `${shorts}/${n} SHORT`;
+    const waiting = blockers.length ? ` — waiting on: ${blockers.join(", ")}` : " — votes split";
+    sum = lead + waiting;
+  }
+  $("confsum").textContent = sum;
+  $("confsum").className = (longs === n && n) ? "pos" : (shorts === n && n) ? "neg" : "dim";
 }
 
 function setBar(id, frac){
