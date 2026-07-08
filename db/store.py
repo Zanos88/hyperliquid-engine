@@ -280,37 +280,47 @@ class TelemetryStore:
     def get_strategy_settings(self) -> dict:
         with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
-                """SELECT mode, prod_bias_tf, prod_trigger_tf, test_bias_tf, test_trigger_tf
+                """SELECT mode, prod_bias_tf, prod_trigger_tf, test_bias_tf, test_trigger_tf,
+                          target_model, stop_model
                    FROM strategy_settings WHERE id = 1"""
             ).fetchone()
         if row is None:
             raise RuntimeError("strategy_settings row missing — run apply_schema()")
-        mode, pb, pt, tb, tt = row
+        mode, pb, pt, tb, tt, target_model, stop_model = row
         active_bias, active_trigger = (pb, pt) if mode == "production" else (tb, tt)
         return {
             "mode": mode,
             "prod_bias_tf": pb, "prod_trigger_tf": pt,
             "test_bias_tf": tb, "test_trigger_tf": tt,
             "active_bias_tf": active_bias, "active_trigger_tf": active_trigger,
+            "target_model": target_model, "stop_model": stop_model,
         }
 
     def set_strategy_setting(self, name: str, value: str, updated_by: str) -> dict:
-        """Update mode or one timeframe. Validates bias > trigger for the
-        affected pair BEFORE writing (plus DB CHECKs on allowed values).
-        Logs old->new to risk_events. Returns the new settings dict."""
+        """Update mode, one timeframe, or the signal geometry
+        (target_model/stop_model). Validates bias > trigger for the
+        affected pair and the geometry against the allowed model sets
+        BEFORE writing (plus DB CHECKs). Logs old->new to risk_events.
+        Returns the new settings dict."""
+        from strategy.signals import STOP_MODELS, TARGET_MODELS
         from strategy.timeframes import validate_combo
 
-        allowed = ("mode", "prod_bias_tf", "prod_trigger_tf", "test_bias_tf", "test_trigger_tf")
+        allowed = ("mode", "prod_bias_tf", "prod_trigger_tf", "test_bias_tf",
+                   "test_trigger_tf", "target_model", "stop_model")
         if name not in allowed:
             raise ValueError(f"unknown strategy setting {name}")
 
         old = self.get_strategy_settings()
         candidate = {**old, name: value}
-        if name != "mode":
+        if name in ("prod_bias_tf", "prod_trigger_tf", "test_bias_tf", "test_trigger_tf"):
             validate_combo(candidate["prod_bias_tf"], candidate["prod_trigger_tf"])
             validate_combo(candidate["test_bias_tf"], candidate["test_trigger_tf"])
-        elif value not in ("production", "test"):
+        elif name == "mode" and value not in ("production", "test"):
             raise ValueError(f"mode must be production or test, got {value!r}")
+        elif name == "target_model" and value not in TARGET_MODELS:
+            raise ValueError(f"target_model must be one of {TARGET_MODELS}, got {value!r}")
+        elif name == "stop_model" and value not in STOP_MODELS:
+            raise ValueError(f"stop_model must be one of {STOP_MODELS}, got {value!r}")
 
         with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(

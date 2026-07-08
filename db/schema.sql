@@ -171,6 +171,19 @@ ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_positions INT;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_risk_usd NUMERIC;
 ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS cb_halted BOOLEAN;
 
+-- V2.3 go-live (idempotent): signal geometry the engine passes to
+-- evaluate_signal. Defaults reproduce pre-V2.3 behavior exactly, so the
+-- existing live row is unchanged until explicitly set. The engine only
+-- honors these on the 4h/1h combo (see main.py effective_signal_geometry);
+-- fib_extension_preferred was the only positive cell in the V2.3 sweep
+-- (docs/V2_3_TARGET_EXTENSION.md) and it lost on 15m/5m and 1d/4h.
+ALTER TABLE strategy_settings ADD COLUMN IF NOT EXISTS target_model TEXT
+    NOT NULL DEFAULT 'nearest_structure'
+    CHECK (target_model IN ('nearest_structure', 'fib_extension_preferred', 'blue_sky_atr'));
+ALTER TABLE strategy_settings ADD COLUMN IF NOT EXISTS stop_model TEXT
+    NOT NULL DEFAULT 'structural'
+    CHECK (stop_model IN ('structural', 'hybrid'));
+
 -- Backtest results (SIMULATED data — kept strictly separate from the
 -- live/forward tables; every consumer must label these as simulation).
 CREATE TABLE IF NOT EXISTS backtest_runs (

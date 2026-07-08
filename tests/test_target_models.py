@@ -141,3 +141,23 @@ def test_signal_carries_extended_target_and_rr_uses_it(rich_bias):
     assert sig.target == 140.0              # extension preferred over 110 structure
     structural_stop = 99.8 * (1 - signals_mod.STRUCTURAL_STOP_BUFFER)
     assert sig.reward_risk == pytest.approx((140.0 - 100.0) / (100.0 - structural_stop))
+
+
+# ── live-engine gating: configured geometry only on 4h/1h ──
+
+def _settings(mode, active_bias, active_trigger, target, stop):
+    return {"mode": mode, "active_bias_tf": active_bias, "active_trigger_tf": active_trigger,
+            "target_model": target, "stop_model": stop}
+
+
+def test_geometry_applied_only_on_4h_1h():
+    from main import effective_signal_geometry
+
+    # 4h/1h production: configured values flow through
+    s = _settings("production", "4h", "1h", "fib_extension_preferred", "structural")
+    assert effective_signal_geometry(s) == ("fib_extension_preferred", "structural")
+
+    # any other active combo -> pre-V2.3 defaults, regardless of stored config
+    for bias_tf, trig_tf in [("5m", "1m"), ("15m", "5m"), ("1d", "4h"), ("8h", "1h")]:
+        s = _settings("test", bias_tf, trig_tf, "fib_extension_preferred", "hybrid")
+        assert effective_signal_geometry(s) == ("nearest_structure", "structural")

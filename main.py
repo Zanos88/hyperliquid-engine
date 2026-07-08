@@ -66,6 +66,24 @@ def newest_closed_open_time(candles) -> int | None:
     return candles[-1].open_time_ms if candles else None
 
 
+# The only combo the V2.3 sweep found a positive target-extension cell on
+# was 4h/1h; fib_extension_preferred LOST on 15m/5m and 1d/4h. So the
+# engine honors the configured signal geometry ONLY on 4h/1h and falls
+# back to the pre-V2.3 defaults on any other active combo — the extension
+# never silently follows a future timeframe change.
+GEOMETRY_GATED_COMBO = ("4h", "1h")
+
+
+def effective_signal_geometry(settings: dict) -> tuple[str, str]:
+    """(target_model, stop_model) the engine should use this cycle.
+    Configured values apply only on the gated 4h/1h combo; every other
+    combo gets the defaults (nearest_structure, structural)."""
+    combo = (settings["active_bias_tf"], settings["active_trigger_tf"])
+    if combo == GEOMETRY_GATED_COMBO:
+        return settings["target_model"], settings["stop_model"]
+    return "nearest_structure", "structural"
+
+
 def decorate(text: str, settings: dict) -> str:
     """Uniform alert decoration (build requirement: every alert states the
     active combo; test-mode alerts are unmistakably labeled)."""
@@ -202,10 +220,12 @@ def run() -> None:
                     latest_price = candles_trigger[-1].close
 
                     ind_cfg = store.get_indicator_config()
+                    target_model, stop_model = effective_signal_geometry(settings)
                     result, readings = evaluate_signal(
                         candles_bias, candles_trigger, now=now,
                         config=ind_cfg, ichimoku_variant=ind_cfg["ichimoku_variant"],
                         return_readings=True,
+                        target_model=target_model, stop_model=stop_model,
                     )
                     # Publish structural levels + live readings for the
                     # trade panel and the confluence insight cards.
@@ -267,11 +287,12 @@ def run() -> None:
                     open_risk_usd=open_risk, cb_halted=breaker.is_halted(),
                 )
 
+            eff_target, eff_stop = effective_signal_geometry(settings)
             logger.info(
-                "alive: state=%s mode=%s tf=%s/%s bias=%s equity=%.2f open=%d daily_pnl=%.2f cb_halted=%s",
+                "alive: state=%s mode=%s tf=%s/%s target=%s stop=%s bias=%s equity=%.2f open=%d daily_pnl=%.2f cb_halted=%s",
                 store.get_engine_state(), settings["mode"], bias_tf, trigger_tf,
-                current_bias_label, ledger.equity, len(ledger.open_positions),
-                ledger.daily_pnl(), breaker.is_halted(),
+                eff_target, eff_stop, current_bias_label, ledger.equity,
+                len(ledger.open_positions), ledger.daily_pnl(), breaker.is_halted(),
             )
 
         except Exception:
