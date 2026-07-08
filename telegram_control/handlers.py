@@ -144,57 +144,97 @@ async def cmd_kill(update, context, services: ControlServices) -> None:
 
 
 async def cmd_dashboard(update, context, services: ControlServices) -> None:
+    """At-a-glance state (Aetheris dashboard spec, honest fields only —
+    anything that would need invented data is omitted, never faked)."""
     if _denied(update, "/dashboard"):
         return
-    snap = services.account_snapshot()
-    equity = snap["equity"]
-    day_start = snap["day_start_equity"]
+    state = services.store.get_engine_state()
+
+    # Prefer engine-published paper state (fresh telemetry) over the
+    # account snapshot; fall back gracefully.
+    tel = None
+    getter = getattr(services.store, "get_latest_telemetry", None)
+    if callable(getter):
+        try:
+            tel = getter()
+        except Exception:
+            tel = None
+    if tel:
+        equity, day_start = tel["equity"], tel["day_start_equity"]
+        paper_positions = tel.get("open_positions")
+        open_risk = tel.get("open_risk_usd")
+        cb_halted = tel.get("cb_halted")
+    else:
+        snap = services.account_snapshot()
+        equity, day_start = snap["equity"], snap["day_start_equity"]
+        paper_positions = open_risk = cb_halted = None
+
     daily_pnl = equity - day_start
     daily_floor = day_start - 3_000
-    state = services.store.get_engine_state()
+    daily_left = max(equity - daily_floor, 0.0)
+    dd_left = max(equity - 94_000, 0.0)
+
     try:
         s = services.store.get_strategy_settings()
         mode_line = f"Mode: {s['mode']} | TF: {s['active_bias_tf']} bias / {s['active_trigger_tf']} trigger"
     except Exception:
         mode_line = "Mode: (settings unavailable)"
     ind_line = _indicator_summary_safe(services.store)
+
+    ms = None
     try:
         ms = services.store.get_market_state()
-        levels_line = (f"Bias: {ms['bias']} | last ${ms['last_price']:,.2f} | "
-                       f"long stop/target: "
-                       f"{'$%s / $%s' % (format(ms['long_stop'], ',.0f'), format(ms['long_target'], ',.0f')) if ms['long_stop'] and ms['long_target'] else 'no valid structure'}"
-                       ) if ms else None
     except Exception:
-        levels_line = None
+        pass
+
+    cb_line = ("\U0001F6D1 HALTED (-2.5% daily buffer hit)" if cb_halted
+               else "armed at -2.5% daily" if cb_halted is not None else "state unavailable")
 
     lines = [
-        "\U0001F4CB DASHBOARD",
-        f"Engine: {state}",
+        "\U0001F4CB <b>DASHBOARD</b>",
+        "",
+        f"Engine: <b>{state}</b> | Circuit breaker: {cb_line}",
         mode_line,
         *( [ind_line] if ind_line else [] ),
-        *( [levels_line] if levels_line else [] ),
-        f"Equity: ${equity:,.2f}",
-        f"Daily P&L: ${daily_pnl:+,.2f} ({daily_pnl / day_start:+.2%})",
-        f"Distance to daily floor (${daily_floor:,.0f}): ${equity - daily_floor:,.2f}",
-        f"Distance to static floor ($94,000): ${equity - 94_000:,.2f}",
+        "",
+        "\U0001F3E6 <b>Account (paper)</b>",
+        f"Baseline $100,000 | Equity <b>${equity:,.2f}</b> | Day P&L ${daily_pnl:+,.2f} ({daily_pnl / day_start:+.2%})",
+        f"\U0001F6E1 Loss buffers: today ${daily_left:,.0f} of $3,000 left | ${dd_left:,.0f} to max-DD floor ($94,000)",
     ]
+    if ms:
+        lines.append("")
+        lines.append("\U0001F4CA <b>Market</b>")
+        why = f" — {ms['bias_reason']}" if ms.get("bias_reason") else ""
+        lines.append(f"Bias: <b>{ms['bias']}</b>{why}")
+        lines.append(f"Last: ${ms['last_price']:,.2f}")
+        if ms["long_stop"] and ms["long_target"]:
+            rr = (ms["long_target"] - ms["last_price"]) / max(ms["last_price"] - ms["long_stop"], 1e-9)
+            lines.append(f"Structural long: stop ${ms['long_stop']:,.0f} / target ${ms['long_target']:,.0f} (R:R {rr:.1f})")
+        if ms["short_stop"] and ms["short_target"]:
+            rr = (ms["last_price"] - ms["short_target"]) / max(ms["short_stop"] - ms["last_price"], 1e-9)
+            lines.append(f"Structural short: stop ${ms['short_stop']:,.0f} / target ${ms['short_target']:,.0f} (R:R {rr:.1f})")
+
+    lines.append("")
+    lines.append("\U0001F4BC <b>Positions</b>")
+    if paper_positions is not None:
+        risk_s = f" | open risk ${open_risk:,.2f}" if open_risk else ""
+        lines.append(f"Paper: {paper_positions} open{risk_s}")
     try:
         positions = services.execution.get_open_positions()
     except Exception:
         positions = []
-        lines.append("(live positions unavailable — showing account snapshot only)")
     for p in positions:
         lines.append(
-            f"{p.get('positionSide', '?').upper()} {p.get('quantity')} {p.get('base')} "
+            f"LIVE {p.get('positionSide', '?').upper()} {p.get('quantity')} {p.get('base')} "
             f"@ {p.get('entryPrice')} | mark {p.get('markPrice')} | uPnL {p.get('unrealizedPnl')}"
         )
-    if not positions:
-        lines.append("Open positions: none")
-    lines.append(f"Updated: {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}")
-    # Frame B attaches whenever there is a position to act on (spec: the
-    # position dashboard carries the contextual execution buttons).
+    if not positions and paper_positions is None:
+        lines.append("none")
+
+    lines.append("")
+    lines.append(f"\U0001F550 {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}")
     markup = frame_b_markup(positions[0].get("base", "BTC")) if positions else None
-    await _reply(update, "\n".join(lines), reply_markup=markup)
+    await _reply(update, "\n".join(lines), reply_markup=markup, parse_mode="HTML")
 
 
 async def cmd_risk(update, context, services: ControlServices) -> None:

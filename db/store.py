@@ -70,17 +70,38 @@ class TelemetryStore:
         balance: float | None = None,
         unrealized_pnl: float | None = None,
         symbol: str = "BTC",
+        open_positions: int | None = None,
+        open_risk_usd: float | None = None,
+        cb_halted: bool | None = None,
     ) -> None:
         daily_floor = day_start_equity - 3000
         with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO portfolio_telemetry
                    (symbol, equity, balance, unrealized_pnl, day_start_equity,
-                    distance_to_daily_floor, distance_to_static_floor, engine_state)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    distance_to_daily_floor, distance_to_static_floor, engine_state,
+                    open_positions, open_risk_usd, cb_halted)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (symbol, equity, balance, unrealized_pnl, day_start_equity,
-                 equity - daily_floor, equity - 94_000, engine_state),
+                 equity - daily_floor, equity - 94_000, engine_state,
+                 open_positions, open_risk_usd, cb_halted),
             )
+
+    def get_latest_telemetry(self) -> dict | None:
+        with contextlib.nullcontext(self._connect()) as conn:
+            row = conn.execute(
+                """SELECT ts, equity, day_start_equity, engine_state,
+                          open_positions, open_risk_usd, cb_halted
+                   FROM portfolio_telemetry ORDER BY ts DESC, id DESC LIMIT 1"""
+            ).fetchone()
+        if row is None:
+            return None
+        keys = ("ts", "equity", "day_start_equity", "engine_state",
+                "open_positions", "open_risk_usd", "cb_halted")
+        out = dict(zip(keys, row))
+        for k in ("equity", "day_start_equity", "open_risk_usd"):
+            out[k] = float(out[k]) if out[k] is not None else None
+        return out
 
     # ── order intents (floor-guard trigger fires here) ──
 
@@ -220,30 +241,33 @@ class TelemetryStore:
     def record_market_state(self, last_price: float, bias: str,
                             long_stop: float | None, long_target: float | None,
                             short_stop: float | None, short_target: float | None,
-                            symbol: str = "BTC") -> None:
+                            symbol: str = "BTC", bias_reason: str | None = None) -> None:
         with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO market_state (id, ts, symbol, last_price, bias,
-                                             long_stop, long_target, short_stop, short_target)
-                   VALUES (1, now(), %s, %s, %s, %s, %s, %s, %s)
+                                             long_stop, long_target, short_stop, short_target,
+                                             bias_reason)
+                   VALUES (1, now(), %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (id) DO UPDATE SET
                        ts = now(), symbol = EXCLUDED.symbol,
                        last_price = EXCLUDED.last_price, bias = EXCLUDED.bias,
                        long_stop = EXCLUDED.long_stop, long_target = EXCLUDED.long_target,
-                       short_stop = EXCLUDED.short_stop, short_target = EXCLUDED.short_target""",
-                (symbol, last_price, bias, long_stop, long_target, short_stop, short_target),
+                       short_stop = EXCLUDED.short_stop, short_target = EXCLUDED.short_target,
+                       bias_reason = EXCLUDED.bias_reason""",
+                (symbol, last_price, bias, long_stop, long_target, short_stop, short_target,
+                 bias_reason),
             )
 
     def get_market_state(self) -> dict | None:
         with contextlib.nullcontext(self._connect()) as conn:
             row = conn.execute(
                 """SELECT ts, symbol, last_price, bias, long_stop, long_target,
-                          short_stop, short_target FROM market_state WHERE id = 1"""
+                          short_stop, short_target, bias_reason FROM market_state WHERE id = 1"""
             ).fetchone()
         if row is None:
             return None
         keys = ("ts", "symbol", "last_price", "bias", "long_stop", "long_target",
-                "short_stop", "short_target")
+                "short_stop", "short_target", "bias_reason")
         out = dict(zip(keys, row))
         for k in ("last_price", "long_stop", "long_target", "short_stop", "short_target"):
             out[k] = float(out[k]) if out[k] is not None else None

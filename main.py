@@ -200,7 +200,8 @@ def run() -> None:
                     # Publish structural levels for the manual trade panel
                     levels = manual_entry_levels(bias_result, candles_trigger[-1].close)
                     store.record_market_state(
-                        last_price=candles_trigger[-1].close, bias=current_bias_label, **levels,
+                        last_price=candles_trigger[-1].close, bias=current_bias_label,
+                        bias_reason=bias_result.reason, **levels,
                     )
                     latest_levels = levels
                     latest_price = candles_trigger[-1].close
@@ -256,9 +257,13 @@ def run() -> None:
                     })
                     logger.warning("Circuit breaker tripped: %s", breaker.halt_reason)
 
+                open_risk = sum(abs(p.signal.entry - p.signal.stop) * p.quantity
+                                for p in ledger.open_positions)
                 store.record_telemetry(
                     equity=ledger.equity, day_start_equity=ledger.day_start_equity,
                     engine_state=store.get_engine_state(),
+                    open_positions=len(ledger.open_positions),
+                    open_risk_usd=open_risk, cb_halted=breaker.is_halted(),
                 )
 
             logger.info(

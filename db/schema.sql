@@ -160,6 +160,14 @@ CREATE TABLE IF NOT EXISTS market_state (
     short_target NUMERIC    -- next opposing level below
 );
 
+-- V2.1 additions (idempotent): cross-process paper state for the
+-- Telegram/web dashboards — the exact level that set the bias, paper
+-- position count, at-stop open risk, and breaker state.
+ALTER TABLE market_state ADD COLUMN IF NOT EXISTS bias_reason TEXT;
+ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_positions INT;
+ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS open_risk_usd NUMERIC;
+ALTER TABLE portfolio_telemetry ADD COLUMN IF NOT EXISTS cb_halted BOOLEAN;
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard
