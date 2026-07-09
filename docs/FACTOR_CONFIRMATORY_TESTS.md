@@ -37,7 +37,7 @@ dependent (overlap structure in §2.4), not independent replications.
 
 Operative pre-registration: the constants block in
 `scripts/confirmatory_rule_test.py`. Pre-registration commit:
-`PREREG2_COMMIT_HASH` (script + this section committed before `--phase run`).
+`1b8348c` (script + this section committed before `--phase run`).
 The script's `--phase selfcheck` asserts the rule's three conditions still
 resolve to the round-1 threshold triples — the rule is imported, not
 redefined.
@@ -144,6 +144,6 @@ Frozen inputs: `research/data/BTC_{1h,4h,12h}_snapshot.json`. Results:
 
 ## Appendix: git commits
 
-1. `research(r2): confirmatory-test pre-registration` (PREREG2_COMMIT_HASH)
+1. `research(r2): confirmatory-test pre-registration` (1b8348c)
 2. TBD (12H snapshot)
 3. TBD (results)
