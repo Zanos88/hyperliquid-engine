@@ -188,12 +188,51 @@ imports nothing from `signals.py` and touches no live code.
   structurally prevent two concurrent sessions sharing a working tree —
   the class of risk behind that bundling.
 
+## OBV-divergence re-anchor investigation — 2026-07-09 (follow-up brief)
+
+Hypothesis under test: `divergence`'s 0-2-trade sample had the same
+timing bug as Fisher/TK (checked at entry instead of over the
+pre-reversal down-leg). Method: same funnel discipline — diagnostic
+BEFORE any code change, on real 4h/1h data (5,000 1h bars,
+2025-12-12 → 2026-07-08), over every bar passing E2E geometry + the
+Fisher exhaustion-window gate.
+
+| direction | setups | (a) entry-anchored hits (current) | (b) pivot-anchored hits (proposed) |
+|---|---|---|---|
+| long | 19 | 0 | 0 |
+| short | 18 | 1 | 0 |
+
+Base rate of the pivot-anchored rule over ALL 4,960 evaluated bars:
+bullish divergence 379 (7.6%), bearish 529 (10.7%).
+
+**Verdict: hypothesis falsified — this is NOT a timing bug, and no code
+change was made** (the brief's own decision gate: don't force a
+re-anchor onto a different problem). Re-anchoring the measurement at
+the pre-reversal price pivot recovers zero hits, even though the same
+rule fires on ~8-11% of bars in general. The root cause is a
+**structural conflict between two gates**: the Fisher-extreme
+requirement (|F| >= 2) selects sharp, conviction-driven legs where OBV
+moves WITH price, while regular divergence requires OBV to move AGAINST
+price on that same leg. The E2E-with-Fisher setups anti-select
+divergence by construction. "OBV-divergence doesn't fire on this data
+even with correct timing" is the answer, not a failure to fix.
+
+Consequences: the 6-cell divergence re-run was not performed (nothing
+changed to re-run); the original divergence rows in the table above
+stand as the honest result. If OBV divergence is ever revisited for
+this module, the experiment is architectural — e.g. divergence INSTEAD
+OF the Fisher gate, not alongside it — which is a rule redesign, out of
+scope per the brief. `lrs_flattening` (which measures deceleration, not
+opposition, and therefore can coexist with a Fisher extreme) remains
+the only OBV rule with a workable sample.
+
 ## Git commits
 
 1. `feat: ichimoku cloud-edge/TK helper for counter-trend (reuse existing module)`
 2. `feat: E2E counter-trend signal module (isolated from trend strategy)`
 3. `feat: counter-trend backtest integration + sweep axes (strategy_type tag)`
 4. `docs: track 2 build doc + comparison table (vs trend system, same schema)`
+5. `docs: OBV-divergence re-anchor investigation — hypothesis falsified, no code change`
 
 ## Open items
 
@@ -201,8 +240,9 @@ imports nothing from `signals.py` and touches no live code.
 2. Exhaustion window (15 bars) and `cross_lookback` (6) are principled
    defaults chosen to fix the precede-timing, not tuned — a follow-up
    could sweep them if the module shows promise.
-3. OBV-divergence anchoring: kept literal (fires rarely at reclaims); a
-   future variant could measure divergence over the pre-reversal down-leg
-   rather than ending at the entry bar. Flagged, not built.
+3. ~~OBV-divergence anchoring~~ — RESOLVED 2026-07-09 (section above):
+   tested, not a timing issue; divergence structurally conflicts with
+   the Fisher-extreme gate at these setups. Any revival is a rule
+   redesign (divergence instead of Fisher), explicitly not scoped.
 4. Part 4 integration stays out of scope until both systems have real
    (larger-sample) results.
