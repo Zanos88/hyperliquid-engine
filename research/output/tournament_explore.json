@@ -1,0 +1,251 @@
+{
+ "panels": [
+  {
+   "tf": "1d",
+   "bars": 2150,
+   "eval_start": 201,
+   "explore_end": 1564,
+   "last": 2149,
+   "explore_window": "2021-03-08T23:59:59+00:00 .. 2024-11-30T23:59:59+00:00",
+   "holdout_window": "2024-12-01T23:59:59+00:00 .. 2026-07-08T23:59:59+00:00",
+   "buy_hold_explore": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.6368937198744018,
+    "net_multiple": 1.8905990185241057,
+    "ann_return_pct": 18.581437054781947,
+    "sharpe": 0.28392533870480224,
+    "max_dd_log": 1.4554119104784764,
+    "trades": 0,
+    "exposure": 1.0
+   },
+   "calibration_bar_sharpe": 1.4043628321463206,
+   "calibration_median": 0.45265417329024793,
+   "variants": {
+    "sma50": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 1.0355792630559473,
+      "net_multiple": 2.816737395054515,
+      "ann_return_pct": 31.931960344391786,
+      "sharpe": 0.7116289395334059,
+      "max_dd_log": 0.8774722811508497,
+      "trades": 76,
+      "exposure": 0.5124633431085044
+     },
+     "holdout": null
+    },
+    "sma100": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 0.9208884925972547,
+      "net_multiple": 2.5115208666063915,
+      "ann_return_pct": 27.94437839930557,
+      "sharpe": 0.6076323774602209,
+      "max_dd_log": 0.48497450960058297,
+      "trades": 52,
+      "exposure": 0.5381231671554252
+     },
+     "holdout": null
+    },
+    "sma200": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 0.49788608462461265,
+      "net_multiple": 1.6452396946313501,
+      "ann_return_pct": 14.25150083635225,
+      "sharpe": 0.319556121077282,
+      "max_dd_log": 1.019314530230562,
+      "trades": 34,
+      "exposure": 0.5483870967741935
+     },
+     "holdout": null
+    },
+    "donch_20_10": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 0.3991773977102345,
+      "net_multiple": 1.4905980238305763,
+      "ann_return_pct": 11.273171737871902,
+      "sharpe": 0.2833872829784683,
+      "max_dd_log": 0.7747806524256617,
+      "trades": 42,
+      "exposure": 0.4714076246334311
+     },
+     "holdout": null
+    },
+    "donch_55_20": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 0.1226270456505693,
+      "net_multiple": 1.130462731324371,
+      "ann_return_pct": 3.3358752836814,
+      "sharpe": 0.0946957881667671,
+      "max_dd_log": 0.7931960528682616,
+      "trades": 20,
+      "exposure": 0.39589442815249265
+     },
+     "holdout": null
+    },
+    "tsmom30": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 1.107608066941554,
+      "net_multiple": 3.0271090856678136,
+      "ann_return_pct": 34.49955731708023,
+      "sharpe": 0.7731775130845031,
+      "max_dd_log": 0.6331611530806386,
+      "trades": 114,
+      "exposure": 0.5249266862170088
+     },
+     "holdout": null
+    },
+    "tsmom90": {
+     "explore": {
+      "bars": 1364,
+      "years": 3.74,
+      "net_log_return": 0.6197560561045814,
+      "net_multiple": 1.858474623005139,
+      "ann_return_pct": 18.038872555842445,
+      "sharpe": 0.39265670296118854,
+      "max_dd_log": 0.8513370943465868,
+      "trades": 64,
+      "exposure": 0.5601173020527859
+     },
+     "holdout": null
+    }
+   }
+  },
+  {
+   "tf": "12h",
+   "bars": 3300,
+   "eval_start": 201,
+   "explore_end": 2369,
+   "last": 3299,
+   "explore_window": "2022-04-11T23:59:59+00:00 .. 2025-03-30T23:59:59+00:00",
+   "holdout_window": "2025-03-31T11:59:59+00:00 .. 2026-07-08T23:59:59+00:00",
+   "buy_hold_explore": {
+    "bars": 2169,
+    "years": 2.97,
+    "net_log_return": 0.6950826405626127,
+    "net_multiple": 2.0038746684286743,
+    "ann_return_pct": 26.356545287827515,
+    "sharpe": 0.4434436483611451,
+    "max_dd_log": 0.9912214436155387,
+    "trades": 0,
+    "exposure": 1.0
+   },
+   "calibration_bar_sharpe": 1.5913330798887475,
+   "calibration_median": 0.6143844400360471,
+   "variants": {
+    "sma50": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.6495371435154158,
+      "net_multiple": 1.9146544136770698,
+      "ann_return_pct": 24.43441802692179,
+      "sharpe": 0.620068470739578,
+      "max_dd_log": 0.4470112429591692,
+      "trades": 138,
+      "exposure": 0.5145228215767634
+     },
+     "holdout": null
+    },
+    "sma100": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.8029236617817624,
+      "net_multiple": 2.2320571784627163,
+      "ann_return_pct": 31.0269041157758,
+      "sharpe": 0.7732909644700853,
+      "max_dd_log": 0.45410510405822657,
+      "trades": 80,
+      "exposure": 0.5126786537574919
+     },
+     "holdout": null
+    },
+    "sma200": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.9754664528646174,
+      "net_multiple": 2.6524041439857933,
+      "ann_return_pct": 38.8610491847422,
+      "sharpe": 0.9055793476484858,
+      "max_dd_log": 0.5050682661442526,
+      "trades": 58,
+      "exposure": 0.5587828492392808
+     },
+     "holdout": null
+    },
+    "donch_20_10": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.09839304971799907,
+      "net_multiple": 1.1033963895286234,
+      "ann_return_pct": 3.366963852153293,
+      "sharpe": 0.10646443406916965,
+      "max_dd_log": 0.6185043288535109,
+      "trades": 68,
+      "exposure": 0.4158598432457354
+     },
+     "holdout": null
+    },
+    "donch_55_20": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.5271275800256973,
+      "net_multiple": 1.6940592635867704,
+      "ann_return_pct": 19.412104654931706,
+      "sharpe": 0.5880316622892571,
+      "max_dd_log": 0.3779792944570634,
+      "trades": 30,
+      "exposure": 0.3983402489626556
+     },
+     "holdout": null
+    },
+    "tsmom30": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.7921225338629548,
+      "net_multiple": 2.208078176613349,
+      "ann_return_pct": 30.55145531609178,
+      "sharpe": 0.7435925853612287,
+      "max_dd_log": 0.44119515524644126,
+      "trades": 192,
+      "exposure": 0.5320424158598432
+     },
+     "holdout": null
+    },
+    "tsmom90": {
+     "explore": {
+      "bars": 2169,
+      "years": 2.97,
+      "net_log_return": 0.7942503939985087,
+      "net_multiple": 2.2127816605448305,
+      "ann_return_pct": 30.64498374175335,
+      "sharpe": 0.7572754241248115,
+      "max_dd_log": 0.4929868294133007,
+      "trades": 93,
+      "exposure": 0.5458736745043798
+     },
+     "holdout": null
+    }
+   }
+  }
+ ],
+ "selection_criteria": "highest exploration net Sharpe across both panels, requiring >= 10 exploration trades AND Sharpe > panel family-max shift-null 95th pct AND Sharpe > buy-and-hold exploration Sharpe on the same panel",
+ "selection": null,
+ "ran_at_utc": "2026-07-09T11:41:37+00:00"
+}

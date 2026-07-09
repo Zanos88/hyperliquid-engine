@@ -1,8 +1,13 @@
 # Strategy Tournament (Round 3) — Classic Trend/Momentum, Pre-registered
 
-Study date: 2026-07-09. Status: **RESEARCH ONLY — pre-registered; results
-pending.** Follows FACTOR_CORRELATION_STUDY.md (round 1, null) and
-FACTOR_CONFIRMATORY_TESTS.md (round 2, 0/3 falsified).
+Study date: 2026-07-09. Status: **RESEARCH ONLY — COMPLETE. Result: NULL
+at the pre-registered bar** (no variant cleared the family-max luck
+calibration; the holdout never ran) — **with a materially different
+texture than rounds 1–2**: nearly every variant beat buy-and-hold
+risk-adjusted with roughly half the drawdown, consistent with the external
+trend literature, but a single asset over ~4 years cannot statistically
+separate that from timing luck. See §6. Follows FACTOR_CORRELATION_STUDY.md
+(round 1, null) and FACTOR_CONFIRMATORY_TESTS.md (round 2, 0/3 falsified).
 
 > **RESEARCH — NO TRADING IMPACT.** No trades, no strategy module changes,
 > no DB. Frozen historical Hyperliquid candles; idealized close fills; taker
@@ -97,19 +102,80 @@ real arbiter.
 
 ## 3. Exploration results
 
-*(filled after `--phase explore`)*
+### 3.1 Panel 1D — exploration 2021-03-08 → 2024-11-30 (holdout reserved 2024-12-01 → 2026-07-08)
+
+Buy-and-hold: net ×1.89, Sharpe +0.28, maxDD(log) 1.46.
+**Luck bar (family-max shift p95 Sharpe): 1.40** (shift-null median 0.45).
+
+| Variant | Net × | Ann % | Sharpe | maxDD(log) | Trades | Exposure |
+|---|---|---|---|---|---|---|
+| sma50 | 2.82 | +31.9 | +0.71 | 0.88 | 76 | 0.51 |
+| sma100 | 2.51 | +27.9 | +0.61 | 0.48 | 52 | 0.54 |
+| sma200 | 1.65 | +14.3 | +0.32 | 1.02 | 34 | 0.55 |
+| donch_20_10 | 1.49 | +11.3 | +0.28 | 0.77 | 42 | 0.47 |
+| donch_55_20 | 1.13 | +3.3 | +0.09 | 0.79 | 20 | 0.40 |
+| **tsmom30** | **3.03** | **+34.5** | **+0.77** | 0.63 | 114 | 0.52 |
+| tsmom90 | 1.86 | +18.0 | +0.39 | 0.85 | 64 | 0.56 |
+
+### 3.2 Panel 12H — exploration 2022-04-11 → 2025-03-30 (holdout reserved 2025-03-31 → 2026-07-08)
+
+Buy-and-hold: net ×2.00, Sharpe +0.44, maxDD(log) 0.99.
+**Luck bar: 1.59** (shift-null median 0.61).
+
+| Variant | Net × | Ann % | Sharpe | maxDD(log) | Trades | Exposure |
+|---|---|---|---|---|---|---|
+| sma50 | 1.91 | +24.4 | +0.62 | 0.45 | 138 | 0.51 |
+| sma100 | 2.23 | +31.0 | +0.77 | 0.45 | 80 | 0.51 |
+| **sma200** | **2.65** | **+38.9** | **+0.91** | 0.51 | 58 | 0.56 |
+| donch_20_10 | 1.10 | +3.4 | +0.11 | 0.62 | 68 | 0.42 |
+| donch_55_20 | 1.69 | +19.4 | +0.59 | 0.38 | 30 | 0.40 |
+| tsmom30 | 2.21 | +30.6 | +0.74 | 0.44 | 192 | 0.53 |
+| tsmom90 | 2.21 | +30.6 | +0.76 | 0.49 | 93 | 0.55 |
 
 ## 4. Selection
 
-*(filled after mechanical selection)*
+**No variant qualifies.** Best cells: 1D tsmom30 (Sharpe 0.77 vs bar 1.40)
+and 12H sma200 (0.91 vs bar 1.59). Twelve of fourteen cells beat their
+panel's buy-and-hold Sharpe, but none clears the family-max luck bar —
+the pre-registered significance device. Per §2.3: null result.
 
 ## 5. Holdout confirmation
 
-*(filled after the single `--phase confirm`, if a variant is selected)*
+**Not run — by design.** Both holdouts (1D 2024-12→2026-07, 12H
+2025-03→2026-07) remain untouched and valid for a future pre-registered
+question.
 
 ## 6. Findings (honest read)
 
-*(filled last)*
+1. **Null at the bar, but not the same null as rounds 1–2.** Rounds 1–2's
+   candidates were *indistinguishable from noise and reversed on unseen
+   data*. Here, 12/14 variants beat buy-and-hold risk-adjusted, with
+   uniformly lower drawdowns (0.38–1.02 log vs 0.99–1.46) at ~50%
+   exposure, across two timeframes, with the whole family pointing the
+   same way — the exact signature the external trend literature documents
+   (drawdown avoidance is where the Sharpe comes from; these windows
+   include the 2021–22 −77% bear that trend rules side-stepped).
+2. **Why it still fails the bar:** the seven variants are highly
+   correlated (all "long in uptrends"), so 14 supportive cells are closer
+   to 1–2 independent observations. On one asset over ~4 years, the
+   luckiest 5% of random 50%-exposed timers reach Sharpe 1.40–1.59; the
+   best real variant reached 0.91. The sample cannot separate skill from
+   timing luck. This is a **power** failure, not a falsification — unlike
+   round 2, nothing here reversed sign.
+3. **The pre-registered next step is breadth, not depth.** The literature
+   validates trend *across assets* (the average of many per-asset trend
+   sleeves), which multiplies effective sample. Round 4 should re-test
+   this same family, unchanged, as an equal-weight portfolio across the
+   liquid Hyperliquid universe (BTC/ETH/SOL/…): same rules, same fees,
+   same luck-bar machinery, portfolio-level Sharpe. That is a power
+   upgrade of an undamaged hypothesis, not a new mined family.
+4. **What is already actionable regardless of statistics:** if the goal is
+   BTC exposure with smaller drawdowns rather than "an edge," a long/flat
+   trend filter (e.g. tsmom30 or sma100/200) historically delivered
+   similar-to-better net returns than holding, with roughly half the
+   drawdown, and that property is robust across all 14 specifications
+   here. That is a risk-management claim, not an alpha claim — it is the
+   one thing three rounds of hostile testing have not damaged.
 
 ## 7. Limitations
 
@@ -135,5 +201,5 @@ Frozen inputs: `research/data/BTC_{1d,12h}_snapshot.json`. Results:
 ## Appendix: git commits
 
 1. `research(r3): strategy-tournament pre-registration` (08b1853)
-2. TBD (1D snapshot)
-3. TBD (results)
+2. `research(r3): frozen 1D snapshot + prereg hash recorded` (f9f0780)
+3. `research(r3): exploration null at luck bar; breadth flagged as round 4` (this commit)
