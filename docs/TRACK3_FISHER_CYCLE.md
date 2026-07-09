@@ -179,6 +179,75 @@ move), and at 1.5 the strategy is still a well-sampled breakeven-minus.
 No basis to extend beyond 3.0. Decision to shelve or pursue is the
 user's; the data does not support pursuing.
 
+## Exit-reason diagnostic — 2026-07-09 (why legs cap near the $1,279 median)
+
+Read of existing stored data (no new sweep, no code change). Two
+hypotheses could produce that median: (1) the exhaustion-flip fires at
+genuine exhaustion (ceiling real, stops correctly don't help), or (2)
+the flip fires prematurely on a pullback inside a larger move, cutting
+winners (the constraint would be the exit trigger, not stop width).
+
+Method note: R-multiples are not comparable across `atr_mult` (a stop is
+−1R by construction; a flip's R scales with risk = atr×ATR). So the
+per-reason R-distribution is from ONE canonical run — threshold 2.0,
+atr_mult 1.5 (the widest *defensible* stop) — while exit-reason counts
+are shown across all 9 runs, and post-flip price behavior uses the
+deduped union of distinct flip events (same timestamp+direction ⇒ same
+forward price action).
+
+### Exit-reason mix
+
+All 9 runs (n=1,075 legs; the stop share falls as the stop widens, so
+this is an average over stop widths): **bias_flip 40.4% · stop 39.1% ·
+exhaustion_flip 20.6%**. Canonical run (thr 2.0 / atr 1.5, n=119):
+bias_flip 42% · stop 37% · flip 21%. Net-R distribution per reason
+(canonical, net R = median [p25, p75]):
+
+| exit reason | n | median net R | p25 | p75 | read |
+|---|---|---|---|---|---|
+| exhaustion_flip | 25 | **+1.06** | +0.60 | +1.75 | the profitable exits |
+| stop | 44 | −1.07 | −1.09 | −1.06 | −1R by construction |
+| bias_flip | 50 | −0.08 | −0.36 | +0.79 | ~breakeven, wide |
+
+**The signature flip is the profitable exit — but the MINORITY exit
+(21%).** The flip legs make money (median +1.06R); the drag is that 79%
+of legs never reach a flip — they stop out (−1R each) or get
+force-flattened on a 1D bias change (~breakeven) first.
+
+### Post-flip price behavior (51 distinct flip events)
+
+Next 10 bars after each flip, in the CLOSED leg's direction:
+**continued favorably 45% · reversed 43% · chopped 12%.** Median max
+favorable excursion left on the table after a flip: $1,672 (mean
+$2,312) vs the $1,279 median captured.
+
+### Verdict — neither hypothesis wins; the framing shifts
+
+- **Premature-exit (hyp 2) is NOT supported.** Post-flip the market is a
+  coin flip — 45% continue vs 43% reverse on n=51. You cannot call the
+  flip *systematically* premature when it reverses about as often as it
+  runs. (The $1,672 missed MFE is a best-case intra-window peak, not a
+  realizable exit, and it only materializes ~45% of the time — it
+  overstates the "cut winner" case.)
+- **Genuine-exhaustion (hyp 1) is only half-true.** The flip legs are
+  profitable and price reverses 43% of the time, but a 45% continuation
+  rate means the ceiling is soft, not a clean exhaustion wall.
+- **The real structural constraint is neither the flip timing nor the
+  stop width — it is that the cycle mechanism rarely gets to operate.**
+  Only 1 leg in 5 reaches the profitable flip; the other 4 die on a stop
+  (−1R) or a bias-flatten (~0R). Even a perfect flip fix would touch
+  only ~21% of legs, so it cannot rescue a breakeven-minus system whose
+  losses come from the majority that never cycle.
+
+So the ATR-extension null stands, on firmer and more specific ground:
+not "the flip caps at a real ceiling" and not "the flip cuts winners,"
+but "most legs are killed by stops and 1D-bias-flattens before the
+Fisher cycle can compound, and the flip itself is a coin flip when it
+does fire." SIMULATED throughout (idealized fills, no funding/slippage);
+n=51 flip events is modest — enough to reject *systematic* prematurity,
+not enough to characterize the flip finely. Diagnostic only; no exit
+redesign performed (that would be a separate decision).
+
 ## Git commits
 
 1. `feat: 1D bias (reuse compute_bias, no-lookahead) - Track 3 Part 1`
