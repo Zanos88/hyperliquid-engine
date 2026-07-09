@@ -1,10 +1,14 @@
 """Phase 3 acceptance tests: the Postgres floor-guard trigger.
 
-Runs against a real Postgres (Railway) — skipped cleanly when no
-DATABASE_URL/DATABASE_PUBLIC_URL is present, so the rest of the suite
-stays network-free. Run with:
+Runs ONLY against the dedicated staging Supabase project — never the live
+one. The suite reads TEST_DATABASE_URL exclusively (the staging session-
+pooler URI) and is skipped cleanly when it is unset, so the rest of the
+suite stays network-free. It deliberately does NOT read DATABASE_URL /
+DATABASE_PUBLIC_URL: those point at the live engine's DB, and a stray write
+here left the live engine PAUSED ~5.4h on 2026-07-08. Run with (PowerShell):
 
-    railway run --service Postgres python -m pytest tests/test_db_trigger.py -v
+    $env:TEST_DATABASE_URL="postgresql://postgres.<ref>:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+    python -m pytest tests/test_db_trigger.py -v
 """
 from __future__ import annotations
 
@@ -15,8 +19,23 @@ from ulid import ULID
 
 psycopg = pytest.importorskip("psycopg")
 
-HAS_DB = bool(os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_PUBLIC_URL"))
-pytestmark = pytest.mark.skipif(not HAS_DB, reason="no DATABASE_URL — DB trigger tests need Postgres")
+# DB tests target ONLY the staging Supabase project, via TEST_DATABASE_URL.
+# We never fall back to DATABASE_URL/DATABASE_PUBLIC_URL — those are the live
+# engine's DB, and a stray write here paused the live engine ~5.4h on
+# 2026-07-08. The guard below makes pointing at live impossible by accident.
+TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")
+
+_LIVE_PROJECT_REF = "lnycymeylmhjqpwtdint"
+if TEST_DB_URL and _LIVE_PROJECT_REF in TEST_DB_URL:
+    raise RuntimeError(
+        f"TEST_DATABASE_URL points at the LIVE Supabase project ({_LIVE_PROJECT_REF}). "
+        "DB tests must target the staging project only — refusing to run."
+    )
+
+HAS_DB = bool(TEST_DB_URL)
+pytestmark = pytest.mark.skipif(
+    not HAS_DB, reason="no TEST_DATABASE_URL — DB trigger tests need the staging Postgres"
+)
 
 if HAS_DB:
     from db.store import TelemetryStore
@@ -25,7 +44,7 @@ if HAS_DB:
 
 @pytest.fixture(scope="module")
 def store():
-    s = TelemetryStore()
+    s = TelemetryStore(database_url=TEST_DB_URL)
     s.apply_schema()
     return s
 
@@ -120,10 +139,10 @@ def test_strategy_settings_roundtrip(store):
 
 
 def test_engine_state_roundtrip(store):
-    # These tests run against the LIVE database (railway run) — always
-    # restore the pre-test state or the suite silently pauses the live
-    # engine (it did, 2026-07-08 06:12 UTC: forward test stopped by a
-    # leftover PAUSED write from this very test).
+    # Runs against the STAGING project (TEST_DATABASE_URL), so this no longer
+    # touches the live engine. The restore-in-finally is kept as defense in
+    # depth — an earlier version ran against live and a leftover PAUSED write
+    # from this test paused the live engine ~5.4h on 2026-07-08.
     initial = store.get_engine_state()
     assert initial in ("ACTIVE", "PAUSED", "KILLED")
     try:

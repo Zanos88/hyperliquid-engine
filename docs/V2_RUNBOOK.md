@@ -22,7 +22,8 @@ All three share state ONLY through Postgres (`engine_state`,
 | `BTC_SIGNAL_BOT_TELEGRAM_TOKEN` / `_CHAT_ID` | engine, guardian, control | Never Bullphoric's |
 | `PROPR_API_KEY` | all | Secret; Railway service variable |
 | `PROPR_BUILDER_CODE` | all | Sent as `X-Builder-Code` on every request |
-| `DATABASE_URL` / `DATABASE_PUBLIC_URL` | all | **Supabase project `btc-signal-bot` (`lnycymeylmhjqpwtdint`, us-east-1)** since the 2026-07-07 schema-only migration. Currently the direct-connection URI (IPv6 — works from the local machine). ⚠️ Before deploying V2 processes ON Railway, switch both to the **Session pooler** URI (`aws-*.pooler.supabase.com:5432`) — Railway compute has no outbound IPv6. RLS is enabled with no policies (bot's postgres role bypasses; REST/anon surface blocked). Rollback: point both vars back at the Railway Postgres references — kept intact, dry-run-era data only. Note Railway credit was near exhaustion at migration time; the rollback window depends on it. |
+| `DATABASE_URL` / `DATABASE_PUBLIC_URL` | all | **Supabase project `btc-signal-bot` (`lnycymeylmhjqpwtdint`, us-east-1)** since the 2026-07-07 schema-only migration. Currently the direct-connection URI (IPv6 — works from the local machine). ⚠️ Before deploying V2 processes ON Railway, switch both to the **Session pooler** URI (`aws-*.pooler.supabase.com:5432`) — Railway compute has no outbound IPv6. RLS is enabled with no policies (bot's postgres role bypasses; REST/anon surface blocked). Rollback: point both vars back at the Railway Postgres references — kept intact, dry-run-era data only. Note Railway credit was near exhaustion at migration time; the rollback window depends on it. **The DB test suite does NOT use this var** — it reads `TEST_DATABASE_URL` (staging project only; see row below). |
+| `TEST_DATABASE_URL` | DB test suite only | **Staging Supabase project `btc-signal-bot-staging` (`bgkddwsnnawczecixsuf`, us-east-1)** session-pooler URI (`postgres.<ref>@aws-0-us-east-1.pooler.supabase.com:5432`). `tests/test_db_trigger.py` reads THIS exclusively and never `DATABASE_URL`, so the suite can never touch the live engine's DB (root cause of the 2026-07-08 5.4h PAUSE). The test aborts if it detects the live ref `lnycymeylmhjqpwtdint`. **Must be UNSET in every live/Railway service config** — set it only in the local test shell (or a gitignored `.env`). |
 | `BTC_SIGNAL_BOT_ADMIN_IDS` | control plane | Comma-separated Telegram user IDs. **Empty = everyone locked out (fail closed)** |
 | `DRY_RUN` | engine, guardian, control | **Unset/anything ≠ "false" means dry-run.** Switch 1 of 2 |
 
@@ -51,6 +52,24 @@ Railway deployment: one service per process (engine = current `worker`
 Procfile; guardian and control plane get their own services pointing at
 the same repo with custom start commands). Decision NUC-vs-Railway is
 still open — see below.
+
+## Running the DB tests (staging only)
+
+`tests/test_db_trigger.py` exercises the Postgres floor-guard trigger against
+a **real** database and mutates config/telemetry tables. It runs ONLY against
+the staging project `btc-signal-bot-staging`, via `TEST_DATABASE_URL` — never
+the live DB. **Do not** run it with `railway run` (that injects the live
+`DATABASE_URL`, which the suite now ignores; but keep the habit out of muscle
+memory). PowerShell:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql://postgres.bgkddwsnnawczecixsuf:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+python -m pytest tests/test_db_trigger.py -v   # expect 7 passed
+```
+
+With `TEST_DATABASE_URL` unset the whole file skips cleanly (exit 0), keeping
+`python -m pytest -q` network-free. The suite refuses to run if the URI
+contains the live ref `lnycymeylmhjqpwtdint`.
 
 ## Engine states
 

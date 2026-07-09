@@ -166,9 +166,10 @@ trigger retention).
 2. Live-default decision (which target model x stop model) is the
    user's call after reviewing this table — not automated, same as
    V2.2.
-3. Staging Supabase project for the test suite (Supabase now Pro tier,
-   2-project limit gone) — separate small task, flagged alongside this
-   build; prevents a repeat of the 2026-07-08 live-engine-paused
-   incident class.
+3. ~~Staging Supabase project for the test suite~~ **DONE (2026-07-09):**
+   `btc-signal-bot-staging` (`bgkddwsnnawczecixsuf`, us-east-1) created;
+   `tests/test_db_trigger.py` now targets it via `TEST_DATABASE_URL` and
+   never the live DB (with a hard guard on the live project ref) — closes
+   the 2026-07-08 live-engine-paused incident class. See docs/V2_RUNBOOK.md.
 4. Track 2 (Ichimoku/OBV mean-reversion) remains deferred until a
    target model is chosen.

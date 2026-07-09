@@ -137,6 +137,21 @@ passing as of the 2026-07-07 implementation pass. These are the
 acceptance contract: if a change breaks one, fix the module, not the
 test.
 
+### DB trigger tests (staging Supabase only)
+
+`tests/test_db_trigger.py` needs a real Postgres and is **skipped** by the
+command above. It runs ONLY against the staging project
+`btc-signal-bot-staging`, via `TEST_DATABASE_URL` (the staging session-pooler
+URI) — it never reads `DATABASE_URL` and never touches the live engine's DB:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql://postgres.<ref>:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+python -m pytest tests/test_db_trigger.py -v   # 7 passed
+```
+
+See `docs/V2_RUNBOOK.md` → "Running the DB tests" for the rationale (the
+2026-07-08 live-engine-paused incident) and the live-ref guard.
+
 ## Stage 2 integration notes (not built here)
 
 Stage 2 adds a Propr execution layer on an ASUS NUC. To slot it in without
