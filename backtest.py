@@ -48,6 +48,13 @@ from strategy.signals import (
     SuppressedSignal,
     evaluate_signal,
 )
+from strategy.counter_trend import (
+    DEFAULT_CROSS_LOOKBACK,
+    OBV_RULES,
+    CounterTrendSignal,
+    evaluate_counter_trend,
+    opposite_cloud_edge,
+)
 from strategy.timeframes import LOOKBACK_BARS, interval_seconds, validate_combo
 from strategy.trigger_1h import fisher_transform
 
@@ -293,6 +300,139 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
     }
 
 
+# ── counter-trend (Track 2) — a SEPARATE strategy path, same tables ──
+
+CT_ICHIMOKU_WINDOW = 120   # enough history for the standard cloud (52+26) + margin
+CT_EXHAUSTION_WINDOW = 15  # bars to look back for the Fisher exhaustion extreme.
+# The exhaustion PRECEDES the reclaim entry by a swing's worth of bars, so
+# the extreme is checked over this window, NOT the 6-bar cross window
+# (a diagnostic on 4h/1h showed the entry-bar / 6-bar Fisher gate fired on
+# 0 of 73 valid E2E-geometry bars — the oversold low sits ~10-15 bars
+# before price reclaims the cloud).
+
+
+def _summarize_trades(trades: list[TradeResult], bars_evaluated: int,
+                      suppressed_rr: int = 0, suppressed_exhaustion: int = 0) -> dict:
+    """Same summary shape as run_backtest, reused by the counter-trend
+    path so store_run / the comparison table need no special-casing."""
+    resolved = [t for t in trades if t.exit_reason != "unresolved"]
+    wins = [t for t in resolved if t.net_r is not None and t.net_r > 0]
+    losses = [t for t in resolved if t.net_r is not None and t.net_r <= 0]
+    net_rs = [t.net_r for t in resolved if t.net_r is not None]
+    equity_r, peak, max_dd = 0.0, 0.0, 0.0
+    for r in net_rs:
+        equity_r += r
+        peak = max(peak, equity_r)
+        max_dd = max(max_dd, peak - equity_r)
+    gross_win = sum(t.net_r for t in wins) if wins else 0.0
+    gross_loss = abs(sum(t.net_r for t in losses)) if losses else 0.0
+    return {
+        "bars_evaluated": bars_evaluated, "trades": trades, "resolved": len(resolved),
+        "wins": len(wins), "losses": len(losses), "unresolved": len(trades) - len(resolved),
+        "suppressed_rr": suppressed_rr, "suppressed_exhaustion": suppressed_exhaustion,
+        "gross_r": sum(t.gross_r for t in resolved if t.gross_r is not None),
+        "net_r": sum(net_rs), "avg_net_r": (sum(net_rs) / len(net_rs)) if net_rs else None,
+        "win_rate": (len(wins) / len(resolved)) if resolved else None,
+        "profit_factor": (gross_win / gross_loss) if gross_loss > 0 else None,
+        "max_drawdown_r": max_dd,
+    }
+
+
+def _fisher_recent_extremes(candles: list[Candle], window: int) -> tuple[float, float]:
+    """(min, max) of Fisher over the last `window` closed bars of the
+    given series — the axis that makes fisher_tf sweepable. The
+    exhaustion PRECEDES the entry (see evaluate_counter_trend), so the
+    gate checks the recent window's extreme, not the entry-bar value.
+    (0.0, 0.0) when history is insufficient."""
+    if len(candles) < 12:
+        return 0.0, 0.0
+    line = fisher_transform(candles)[0][-window:]
+    return min(line), max(line)
+
+
+def simulate_counter_trend_outcome(candles: list[Candle], entry_index: int,
+                                   signal: CounterTrendSignal,
+                                   variant: str = "standard") -> TradeResult:
+    """Walk bars after entry to a FIXED stop or the DYNAMIC opposite-cloud
+    target (recomputed each bar as the Senkou spans move — this is why
+    simulate_outcome, which assumes a fixed target, is not reused). Both
+    touched in one bar -> stop first (conservative). No-lookahead: the
+    target at bar j is the cloud computed from candles up to and including
+    j only."""
+    is_long = signal.direction == "LONG"
+    risk = abs(signal.entry - signal.stop)
+    entry_ts = datetime.fromtimestamp(candles[entry_index].close_time_ms / 1000, tz=timezone.utc)
+
+    for j in range(entry_index + 1, len(candles)):
+        c = candles[j]
+        window = candles[max(0, j + 1 - CT_ICHIMOKU_WINDOW): j + 1]
+        target = opposite_cloud_edge(window, is_long, variant=variant)
+        hit_stop = c.low <= signal.stop if is_long else c.high >= signal.stop
+        hit_target = target is not None and (c.high >= target if is_long else c.low <= target)
+        if hit_stop or hit_target:
+            exit_price = signal.stop if hit_stop else target   # stop wins ambiguity
+            reason = "stop" if hit_stop else "target"
+            sign = 1 if is_long else -1
+            gross_r = sign * (exit_price - signal.entry) / risk
+            fee_r = (signal.entry + exit_price) * TAKER_FEE / risk
+            return TradeResult(
+                entry_ts=entry_ts,
+                exit_ts=datetime.fromtimestamp(c.close_time_ms / 1000, tz=timezone.utc),
+                direction=signal.direction, entry=signal.entry, stop=signal.stop,
+                target=signal.target_at_entry, reward_risk=signal.reward_risk,
+                exit_reason=reason, gross_r=gross_r, net_r=gross_r - fee_r,
+                bars_held=j - entry_index, indicators_snapshot={},
+            )
+    return TradeResult(entry_ts=entry_ts, exit_ts=None, direction=signal.direction,
+                       entry=signal.entry, stop=signal.stop, target=signal.target_at_entry,
+                       reward_risk=signal.reward_risk, exit_reason="unresolved",
+                       gross_r=None, net_r=None, bars_held=len(candles) - 1 - entry_index,
+                       indicators_snapshot={})
+
+
+def run_counter_trend_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
+                               fisher_from: str = "trigger", obv_rule: str = "divergence",
+                               exhaustion_threshold: float = 2.0,
+                               variant: str = "standard") -> dict:
+    """Walk-forward over trigger closes for the E2E counter-trend module.
+    fisher_from selects which series feeds the Fisher gate ('trigger' or
+    'bias') — the fisher_tf sweep axis. One position at a time; no-
+    lookahead bias slice, identical to the trend path."""
+    if fisher_from not in ("trigger", "bias"):
+        raise ValueError(f"fisher_from must be 'trigger' or 'bias', got {fisher_from!r}")
+    trades: list[TradeResult] = []
+    open_until_index = -1
+
+    for i in range(WARMUP_TRIGGER_BARS, len(trigger_candles)):
+        if i <= open_until_index:
+            continue
+        trig_slice = trigger_candles[max(0, i + 1 - LOOKBACK_BARS): i + 1]
+        bias_all = bias_slice_no_lookahead(bias_candles, trigger_candles[i].close_time_ms)
+        if len(bias_all) < WARMUP_BIAS_BARS:
+            continue
+        bias_slice = bias_all[-LOOKBACK_BARS:]
+        fisher_slice = trig_slice if fisher_from == "trigger" else bias_slice
+        fmin, fmax = _fisher_recent_extremes(fisher_slice, CT_EXHAUSTION_WINDOW)
+
+        signal = evaluate_counter_trend(
+            bias_slice, trig_slice, fmin, fmax, variant=variant,
+            exhaustion_threshold=exhaustion_threshold, obv_rule=obv_rule,
+        )
+        if signal is None:
+            continue
+        trade = simulate_counter_trend_outcome(trigger_candles, i, signal, variant=variant)
+        trade.indicators_snapshot = {
+            "strategy": "counter_trend", "direction": signal.direction,
+            "fisher_value": signal.fisher_value, "obv_rule": signal.obv_rule,
+            "reason": signal.reason,
+        }
+        trades.append(trade)
+        open_until_index = (i + trade.bars_held if trade.exit_ts is not None
+                            else len(trigger_candles))
+
+    return _summarize_trades(trades, len(trigger_candles) - WARMUP_TRIGGER_BARS)
+
+
 def _parse_indicators(spec: str) -> dict:
     if spec == "default":
         return dict(DEFAULT_INDICATOR_CONFIG)
@@ -318,20 +458,21 @@ def _window(trigger_candles: list[Candle]) -> tuple[datetime, datetime]:
 
 def store_run(conn, run_id: str, bias_tf: str, trigger_tf: str, config: dict,
               t0: datetime, t1: datetime, summary: dict,
-              trades: list[TradeResult], notes: dict) -> None:
+              trades: list[TradeResult], notes: dict,
+              strategy_type: str = "trend") -> None:
     conn.execute(
         """INSERT INTO backtest_runs (run_id, bias_tf, trigger_tf, indicator_config,
                candles_from, candles_to, bars_evaluated, trades, wins, losses,
                unresolved, suppressed_rr, gross_r, net_r, avg_net_r, win_rate,
-               profit_factor, max_drawdown_r, fees_model, notes)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+               profit_factor, max_drawdown_r, fees_model, notes, strategy_type)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (run_id, bias_tf, trigger_tf, json.dumps(config), t0, t1,
          summary["bars_evaluated"], len(trades), summary["wins"], summary["losses"],
          summary["unresolved"], summary["suppressed_rr"], summary["gross_r"],
          summary["net_r"], summary["avg_net_r"], summary["win_rate"],
          summary["profit_factor"], summary["max_drawdown_r"],
          "taker 0.075%/side, no slippage/funding",
-         json.dumps(notes, default=str)),
+         json.dumps(notes, default=str), strategy_type),
     )
     for t in trades:
         conn.execute(
@@ -590,9 +731,135 @@ def run_sweep(args) -> None:
         print(f"stored: {len(results)} runs under sweep_id={sweep_id} in backtest_runs/backtest_trades")
 
 
+def _fisher_from(fisher_tf: str, bias_tf: str, trigger_tf: str) -> str:
+    if fisher_tf == trigger_tf:
+        return "trigger"
+    if fisher_tf == bias_tf:
+        return "bias"
+    raise SystemExit(f"fisher-tf {fisher_tf} must equal bias-tf ({bias_tf}) or "
+                     f"trigger-tf ({trigger_tf}) — those are the fetched series")
+
+
+def run_counter_trend_single(args) -> None:
+    now_ms = int(time.time() * 1000)
+    span = lambda tf: 5000 * interval_seconds(tf) * 1000
+    print(f"fetching history: bias {args.bias_tf}, trigger {args.trigger_tf} ... (counter_trend)")
+    bias_candles = fetch_candles("BTC", args.bias_tf, now_ms - span(args.bias_tf), now_ms)
+    trigger_candles = fetch_candles("BTC", args.trigger_tf, now_ms - span(args.trigger_tf), now_ms)
+    t0, t1 = _window(trigger_candles)
+    fisher_tf = args.fisher_tf or args.trigger_tf
+    fisher_from = _fisher_from(fisher_tf, args.bias_tf, args.trigger_tf)
+
+    summary = run_counter_trend_backtest(
+        bias_candles, trigger_candles, fisher_from=fisher_from,
+        obv_rule=args.obv_rule, exhaustion_threshold=args.exhaustion_threshold)
+    trades = summary.pop("trades")
+
+    print("\n=== SIMULATED COUNTER-TREND RESULT (not live performance) ===")
+    print(f"combo: {args.bias_tf} bias / {args.trigger_tf} trigger | fisher_tf {fisher_tf} | "
+          f"obv {args.obv_rule} | exhaustion {args.exhaustion_threshold}")
+    print(f"window: {t0:%Y-%m-%d} -> {t1:%Y-%m-%d} | bars evaluated: {summary['bars_evaluated']}")
+    print(f"signals taken: {len(trades)} (resolved {summary['resolved']}, "
+          f"unresolved {summary['unresolved']})")
+    if summary["resolved"]:
+        print(f"wins {summary['wins']} / losses {summary['losses']} "
+              f"(win rate {summary['win_rate']:.1%})")
+        print(f"net {summary['net_r']:+.2f}R total | avg {summary['avg_net_r']:+.3f}R/trade | "
+              f"profit factor {summary['profit_factor'] and round(summary['profit_factor'], 2)} | "
+              f"max drawdown {summary['max_drawdown_r']:.2f}R")
+    else:
+        print("no resolved trades in window -- insufficient data, no conclusions")
+    print(CAVEATS)
+
+    if not args.no_store:
+        from db.store import TelemetryStore
+        store = TelemetryStore()
+        run_id = str(ULID())
+        notes = {
+            "kind": "SIMULATED counter-trend (Ichimoku E2E + Fisher + OBV)",
+            "strategy": "counter_trend", "fisher_tf": fisher_tf,
+            "obv_rule": args.obv_rule, "exhaustion_threshold": args.exhaustion_threshold,
+            "return_stats": {args.bias_tf: log_return_stats(bias_candles),
+                             args.trigger_tf: log_return_stats(trigger_candles)},
+        }
+        store_run(store._connect(), run_id, args.bias_tf, args.trigger_tf,
+                  {"strategy": "counter_trend"}, t0, t1, summary, trades, notes,
+                  strategy_type="counter_trend")
+        print(f"stored: run_id={run_id} ({len(trades)} trades, counter_trend)")
+
+
+def run_counter_trend_sweep(cfg: dict, args) -> None:
+    tf = cfg.get("tf_pair", {"bias": "4h", "trigger": "1h"})
+    bias_tf, trigger_tf = tf["bias"], tf["trigger"]
+    validate_combo(bias_tf, trigger_tf)
+    fisher_tfs = cfg.get("fisher_tfs", [trigger_tf, bias_tf])
+    obv_rules = cfg.get("obv_rules", list(OBV_RULES))
+    thresholds = cfg.get("exhaustion_thresholds", [1.5, 2.0, 2.5])
+    unknown = set(obv_rules) - set(OBV_RULES)
+    if unknown:
+        raise SystemExit(f"unknown obv_rules: {unknown}")
+
+    combos = [(ft, obv, thr) for ft in fisher_tfs for obv in obv_rules for thr in thresholds]
+    sweep_id = str(ULID())
+    print(f"sweep {cfg.get('sweep_name', 'counter_trend')} | {len(combos)} runs | "
+          f"sweep_id={sweep_id}")
+
+    now_ms = int(time.time() * 1000)
+    span = lambda t: 5000 * interval_seconds(t) * 1000
+    bias_candles = fetch_candles("BTC", bias_tf, now_ms - span(bias_tf), now_ms)
+    trigger_candles = fetch_candles("BTC", trigger_tf, now_ms - span(trigger_tf), now_ms)
+    t0, t1 = _window(trigger_candles)
+    print(f"  fetched {bias_tf}: {len(bias_candles)} | {trigger_tf}: {len(trigger_candles)} "
+          f"({t0:%Y-%m-%d} -> {t1:%Y-%m-%d})")
+    stats = {bias_tf: log_return_stats(bias_candles), trigger_tf: log_return_stats(trigger_candles)}
+
+    store_conn = None
+    if not args.no_store:
+        from db.store import TelemetryStore
+        store_conn = TelemetryStore()._connect()
+
+    results: list[tuple[tuple, dict, str]] = []
+    for idx, (ft, obv, thr) in enumerate(combos, 1):
+        summary = run_counter_trend_backtest(
+            bias_candles, trigger_candles,
+            fisher_from=_fisher_from(ft, bias_tf, trigger_tf),
+            obv_rule=obv, exhaustion_threshold=thr)
+        trades = summary["trades"]
+        run_id = str(ULID())
+        if store_conn is not None:
+            notes = {
+                "kind": "SIMULATED counter-trend (Ichimoku E2E + Fisher + OBV)",
+                "sweep_id": sweep_id, "strategy": "counter_trend",
+                "fisher_tf": ft, "obv_rule": obv, "exhaustion_threshold": thr,
+                "return_stats": stats,
+            }
+            store_run(store_conn, run_id, bias_tf, trigger_tf, {"strategy": "counter_trend"},
+                      t0, t1, summary, trades, notes, strategy_type="counter_trend")
+        print(f"[{idx:>2}/{len(combos)}] fisher {ft:<3} | obv {obv:<14} | exh {thr} | "
+              f"{_summary_row(summary)}")
+        results.append(((ft, obv, thr), summary, run_id))
+
+    print("\n=== SIMULATED COUNTER-TREND SWEEP COMPARISON (not live performance) ===")
+    print(f"sweep_id={sweep_id} | runs={len(results)} | {bias_tf}/{trigger_tf}")
+    header = (f"{'fisher_tf':<10}{'obv_rule':<16}{'exh':<6}{'trades':>7}{'W-L':>8}"
+              f"{'netR':>9}{'PF':>7}{'maxDD':>8}")
+    print(header)
+    print("-" * len(header))
+    for (ft, obv, thr), summary, _ in results:
+        pf = summary["profit_factor"]
+        print(f"{ft:<10}{obv:<16}{str(thr):<6}{len(summary['trades']):>7}"
+              f"{str(summary['wins']) + '-' + str(summary['losses']):>8}"
+              f"{summary['net_r']:>+9.2f}{(f'{pf:.2f}' if pf is not None else '-'):>7}"
+              f"{summary['max_drawdown_r']:>8.2f}")
+    print(CAVEATS)
+    if store_conn is not None:
+        print(f"stored: {len(results)} runs under sweep_id={sweep_id} (strategy_type=counter_trend)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", help="YAML sweep config; runs a batch instead of a single backtest")
+    ap.add_argument("--strategy", default="trend", choices=("trend", "counter_trend"))
     ap.add_argument("--bias-tf", default="4h")
     ap.add_argument("--trigger-tf", default="1h")
     ap.add_argument("--indicators", default="default")
@@ -607,11 +874,21 @@ def main() -> None:
     ap.add_argument("--fisher4h-exit", action="store_true",
                     help="exit open sim positions when 4H Fisher crosses extended in trade's favor")
     ap.add_argument("--exhaustion-threshold", type=float, default=FISHER4H_EXHAUSTION_THRESHOLD)
+    ap.add_argument("--fisher-tf", default=None,
+                    help="counter_trend: series for the Fisher gate (must equal bias-tf or trigger-tf)")
+    ap.add_argument("--obv-rule", default="divergence", choices=OBV_RULES)
     ap.add_argument("--no-store", action="store_true")
     args = ap.parse_args()
 
     if args.sweep:
-        run_sweep(args)
+        with open(args.sweep, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        if cfg.get("strategy") == "counter_trend":
+            run_counter_trend_sweep(cfg, args)
+        else:
+            run_sweep(args)
+    elif args.strategy == "counter_trend":
+        run_counter_trend_single(args)
     else:
         run_single(args)
 

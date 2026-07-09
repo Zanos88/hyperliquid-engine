@@ -12,7 +12,7 @@ import asyncio
 import pytest
 
 from data.feed import Candle
-from strategy.ichimoku import VARIANTS, evaluate_ichimoku
+from strategy.ichimoku import VARIANTS, evaluate_ichimoku, ichimoku_components
 from strategy.rsi import Vote, evaluate_rsi, rsi_series
 from strategy.signals import DEFAULT_INDICATOR_CONFIG, INDICATOR_NAMES, evaluate_confluence
 from telegram_control import handlers
@@ -88,6 +88,22 @@ def test_ichimoku_variants():
     assert std.tenkan != crypto.tenkan                  # different windows -> different lines
     with pytest.raises(ValueError):
         evaluate_ichimoku(up, variant="weekend")
+
+
+def test_ichimoku_components_matches_reading_and_orders_cloud():
+    up = trending_candles(120, step=100.0)
+    r = evaluate_ichimoku(up)
+    tenkan, kijun, cloud_top, cloud_bottom = ichimoku_components(up)
+    assert (tenkan, kijun) == (r.tenkan, r.kijun)        # thin wrapper, no recompute drift
+    assert cloud_top == max(r.senkou_a, r.senkou_b)
+    assert cloud_bottom == min(r.senkou_a, r.senkou_b)
+    assert cloud_top >= cloud_bottom
+
+
+def test_ichimoku_components_insufficient_history_is_none():
+    # too few bars for the displaced cloud -> edges None (never a bare level)
+    tenkan, kijun, cloud_top, cloud_bottom = ichimoku_components(trending_candles(40))
+    assert cloud_top is None and cloud_bottom is None
 
 
 # ── dynamic confluence ──
