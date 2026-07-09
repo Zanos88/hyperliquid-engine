@@ -11,6 +11,7 @@ order history (read-only check — empty).
 | Engine | `python main.py` | Candle-close strategy loop → gate → (dry-run) execution; paper ledger; telemetry; alerts |
 | Guardian | `python guardian.py` | Independent WS equity watch; soft-halt floor+$500; hard-flatten floor+$200 |
 | Control plane | `python -m telegram_control` | /run /pause /kill /dashboard /risk + Frame A/B buttons; auth-allowlisted |
+| Trend forward test (paper) | `python forward_test.py --once` | Dry-run trend tracks (tsmom30/sma50/buy_hold, BTC 1D) → `trend_forward_marks` ONLY. Runs via local scheduled task `btc-trend-forward-tick` (daily ×2 + logon), idempotent/self-healing. **Never writes portfolio_telemetry** (floor guard reads it unfiltered). Protocol: docs/TREND_FORWARD_TEST.md |
 
 All three share state ONLY through Postgres (`engine_state`,
 `risk_params`, `pending_signals`, telemetry/ledger/risk-event tables).

@@ -295,3 +295,26 @@ DROP TRIGGER IF EXISTS trg_floor_guard ON trade_execution_ledger;
 CREATE TRIGGER trg_floor_guard
     BEFORE INSERT ON trade_execution_ledger
     FOR EACH ROW EXECUTE FUNCTION enforce_floor_guard();
+
+-- ── Trend dry-run forward test (paper only; docs/TREND_FORWARD_TEST.md) ──
+-- SEPARATE from the live/forward tables by design. Experiment processes
+-- must NEVER write portfolio_telemetry: the floor-guard trigger above reads
+-- its latest row with no writer filter, so a paper-equity row would change
+-- what the LIVE engine's entry intents are validated against.
+CREATE TABLE IF NOT EXISTS trend_forward_marks (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    bar_open_time_ms BIGINT NOT NULL,
+    bar_close_utc TIMESTAMPTZ NOT NULL,
+    strategy TEXT NOT NULL,            -- tsmom30 | sma50 | buy_hold
+    symbol TEXT NOT NULL DEFAULT 'BTC',
+    close NUMERIC NOT NULL,
+    position INT NOT NULL,             -- position held INTO this bar (0/1);
+                                       -- inception rows: position held FROM here
+    bar_log_return NUMERIC NOT NULL,   -- net of fees for this bar
+    equity NUMERIC NOT NULL,
+    flipped BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE (strategy, bar_open_time_ms)
+);
+CREATE INDEX IF NOT EXISTS idx_trend_forward_marks_strategy
+    ON trend_forward_marks (strategy, bar_open_time_ms DESC);
