@@ -79,3 +79,20 @@ def evaluate_ichimoku(candles: Sequence[Candle], variant: str = "standard") -> I
     else:
         vote = Vote.NONE
     return IchimokuReading(vote, tenkan, kijun, senkou_a, senkou_b, variant)
+
+
+def ichimoku_components(
+    candles: Sequence[Candle], variant: str = "standard"
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """(tenkan, kijun, cloud_top, cloud_bottom) at the last closed bar.
+
+    Thin wrapper over evaluate_ichimoku so the counter-trend module can
+    read the Kumo edges and TK lines without recomputing anything (cloud
+    edges are just max/min of the displaced Senkou spans). Any element is
+    None when history is insufficient — callers must treat None as "no
+    reading", never as a level. Used to detect the TK cross by comparing
+    this bar's (tenkan, kijun) against the prior bar's."""
+    r = evaluate_ichimoku(candles, variant=variant)
+    if r.senkou_a is None or r.senkou_b is None:
+        return (r.tenkan, r.kijun, None, None)
+    return (r.tenkan, r.kijun, max(r.senkou_a, r.senkou_b), min(r.senkou_a, r.senkou_b))
