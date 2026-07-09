@@ -55,6 +55,14 @@ from strategy.counter_trend import (
     evaluate_counter_trend,
     opposite_cloud_edge,
 )
+from strategy.fisher_cycle import (
+    daily_bias_at,
+    is_exhausted,
+    leg_stop,
+    macro_broken,
+    opening_direction,
+)
+from strategy.atr import wilder_atr
 from strategy.timeframes import LOOKBACK_BARS, interval_seconds, validate_combo
 from strategy.trigger_1h import fisher_transform
 
@@ -431,6 +439,130 @@ def run_counter_trend_backtest(bias_candles: list[Candle], trigger_candles: list
                             else len(trigger_candles))
 
     return _summarize_trades(trades, len(trigger_candles) - WARMUP_TRIGGER_BARS)
+
+
+def _cycle_leg_result(candles: list[Candle], entry_index: int, exit_index: int,
+                      direction: str, entry: float, stop: float, exit_price: float,
+                      reason: str, cycle_id: int) -> TradeResult:
+    """One leg of a Fisher cycle. No fixed target/R:R (legs exit on the
+    Fisher extreme, a stop, or a bias flip — not a price target), so those
+    fields are None. Fees are charged on this leg's own entry+exit; a flip
+    is a real close+reopen, so the shared price point is paid twice (once
+    as this leg's exit, once as the next leg's entry)."""
+    risk = abs(entry - stop)
+    sign = 1 if direction == "LONG" else -1
+    gross_r = sign * (exit_price - entry) / risk if risk else 0.0
+    fee_r = (entry + exit_price) * TAKER_FEE / risk if risk else 0.0
+    return TradeResult(
+        entry_ts=datetime.fromtimestamp(candles[entry_index].close_time_ms / 1000, tz=timezone.utc),
+        exit_ts=datetime.fromtimestamp(candles[exit_index].close_time_ms / 1000, tz=timezone.utc),
+        direction=direction, entry=entry, stop=stop, target=None, reward_risk=None,
+        exit_reason=reason, gross_r=gross_r, net_r=gross_r - fee_r,
+        bars_held=exit_index - entry_index,
+        indicators_snapshot={"strategy": "fisher_cycle", "cycle_id": cycle_id, "reason": reason},
+    )
+
+
+def run_fisher_cycle_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
+                              exhaustion_threshold: float = 2.0,
+                              atr_multiplier: float = 1.5) -> dict:
+    """Track 3 multi-leg state machine, walked over 4H trigger bars with a
+    1D structural bias (bias_candles). One leg at a time.
+
+    Per bar: intrabar STOP first (stop-first ambiguity) → leg closes at the
+    stop and goes FLAT (flat-and-rearm: a stop is the leg invalidated, NOT
+    a reversal — earliest re-entry is the NEXT bar, no same-bar churn).
+    Else at close: force-flatten if the 1D macro bias broke; otherwise flip
+    LONG↔SHORT on a favorable Fisher exhaustion extreme (close + reopen
+    opposite at this close). From FLAT, (re)open a pullback entry via
+    opening_direction while the macro bias holds. No-lookahead: 1D bias
+    from closed daily candles only; 4H Fisher + ATR precomputed causally."""
+    fisher_line = fisher_transform(trigger_candles)[0]
+    atr_series = wilder_atr(trigger_candles)
+
+    legs: list[TradeResult] = []
+    state = "FLAT"
+    leg: dict | None = None          # {direction, entry, stop, entry_index}
+    macro_dir = None                 # Bias the active cycle opened under; None = no cycle
+    cycle_id = 0
+
+    for i in range(WARMUP_TRIGGER_BARS, len(trigger_candles)):
+        c = trigger_candles[i]
+        fisher = fisher_line[i]
+        atr = atr_series[i]
+        bias = daily_bias_at(bias_candles, c.close_time_ms)
+        stopped_this_bar = False
+
+        if state != "FLAT":
+            is_long = state == "LONG"
+            hit_stop = c.low <= leg["stop"] if is_long else c.high >= leg["stop"]
+            if hit_stop:
+                legs.append(_cycle_leg_result(trigger_candles, leg["entry_index"], i,
+                                              state, leg["entry"], leg["stop"], leg["stop"],
+                                              "stop", cycle_id))
+                state, leg, stopped_this_bar = "FLAT", None, True
+                # flat-and-rearm: macro_dir stays; cycle continues, re-arm >= next bar
+            elif macro_broken(macro_dir, bias):
+                legs.append(_cycle_leg_result(trigger_candles, leg["entry_index"], i,
+                                              state, leg["entry"], leg["stop"], c.close,
+                                              "bias_flip", cycle_id))
+                state, leg, macro_dir = "FLAT", None, None      # cycle ends
+            elif is_exhausted(state, fisher, exhaustion_threshold):
+                legs.append(_cycle_leg_result(trigger_candles, leg["entry_index"], i,
+                                              state, leg["entry"], leg["stop"], c.close,
+                                              "exhaustion_flip", cycle_id))
+                new_dir = "SHORT" if is_long else "LONG"        # flip, same cycle
+                leg = {"direction": new_dir, "entry": c.close,
+                       "stop": leg_stop(new_dir, c.close, atr, atr_multiplier),
+                       "entry_index": i}
+                state = new_dir
+
+        if state == "FLAT" and not stopped_this_bar and atr > 0.0:
+            if macro_dir is not None and macro_broken(macro_dir, bias):
+                macro_dir = None                                # stale cycle expired while flat
+            the_bias = macro_dir if macro_dir is not None else bias
+            direction = opening_direction(the_bias, fisher, exhaustion_threshold)
+            if direction is not None:
+                if macro_dir is None:                           # a fresh cycle begins
+                    macro_dir = the_bias
+                    cycle_id += 1
+                leg = {"direction": direction, "entry": c.close,
+                       "stop": leg_stop(direction, c.close, atr, atr_multiplier),
+                       "entry_index": i}
+                state = direction
+
+    # flush a leg still open at data end as unresolved (excluded from
+    # win/loss stats, same convention as the other simulators)
+    if state != "FLAT" and leg is not None:
+        last = len(trigger_candles) - 1
+        legs.append(TradeResult(
+            entry_ts=datetime.fromtimestamp(
+                trigger_candles[leg["entry_index"]].close_time_ms / 1000, tz=timezone.utc),
+            exit_ts=None, direction=state, entry=leg["entry"], stop=leg["stop"],
+            target=None, reward_risk=None, exit_reason="unresolved",
+            gross_r=None, net_r=None, bars_held=last - leg["entry_index"],
+            indicators_snapshot={"strategy": "fisher_cycle", "cycle_id": cycle_id,
+                                 "reason": "unresolved"}))
+
+    summary = _summarize_trades(legs, len(trigger_candles) - WARMUP_TRIGGER_BARS)
+
+    # per-cycle cumulative net R (the strategy's real performance unit —
+    # a cycle is entry..bias-flip-flatten, spanning multiple legs)
+    cycles: dict[int, dict] = {}
+    for t in legs:
+        cid = t.indicators_snapshot["cycle_id"]
+        cyc = cycles.setdefault(cid, {"legs": 0, "resolved": 0, "net_r": 0.0})
+        cyc["legs"] += 1
+        if t.net_r is not None:
+            cyc["resolved"] += 1
+            cyc["net_r"] += t.net_r
+    cycle_rs = [round(c["net_r"], 4) for c in cycles.values() if c["resolved"]]
+    summary["cycles"] = {
+        "count": len(cycles),
+        "cumulative_r_per_cycle": cycle_rs,
+        "mean_cycle_r": round(sum(cycle_rs) / len(cycle_rs), 4) if cycle_rs else None,
+    }
+    return summary
 
 
 def _parse_indicators(spec: str) -> dict:
@@ -856,10 +988,117 @@ def run_counter_trend_sweep(cfg: dict, args) -> None:
         print(f"stored: {len(results)} runs under sweep_id={sweep_id} (strategy_type=counter_trend)")
 
 
+def run_fisher_cycle_single(args) -> None:
+    bias_tf = args.bias_tf if args.bias_tf != "4h" else "1d"   # cycle default is 1D bias / 4H trigger
+    trigger_tf = args.trigger_tf if args.trigger_tf != "1h" else "4h"
+    now_ms = int(time.time() * 1000)
+    span = lambda t: 5000 * interval_seconds(t) * 1000
+    print(f"fetching history: bias {bias_tf}, trigger {trigger_tf} ... (fisher_cycle)")
+    bias_candles = fetch_candles("BTC", bias_tf, now_ms - span(bias_tf), now_ms)
+    trigger_candles = fetch_candles("BTC", trigger_tf, now_ms - span(trigger_tf), now_ms)
+    t0, t1 = _window(trigger_candles)
+    summary = run_fisher_cycle_backtest(bias_candles, trigger_candles,
+                                        exhaustion_threshold=args.exhaustion_threshold,
+                                        atr_multiplier=args.atr_multiplier)
+    trades, cycles = summary.pop("trades"), summary["cycles"]
+    print("\n=== SIMULATED FISHER-CYCLE RESULT (not live performance) ===")
+    print(f"combo: {bias_tf} bias / {trigger_tf} trigger | exhaustion {args.exhaustion_threshold} "
+          f"| atr_mult {args.atr_multiplier}")
+    print(f"window: {t0:%Y-%m-%d} -> {t1:%Y-%m-%d} | bars evaluated: {summary['bars_evaluated']}")
+    print(f"cycles {cycles['count']} | legs {len(trades)} (resolved {summary['resolved']}, "
+          f"unresolved {summary['unresolved']})")
+    if summary["resolved"]:
+        print(f"leg wins {summary['wins']} / losses {summary['losses']} "
+              f"(win rate {summary['win_rate']:.1%})")
+        print(f"net {summary['net_r']:+.2f}R total | profit factor "
+              f"{summary['profit_factor'] and round(summary['profit_factor'], 2)} | "
+              f"max drawdown {summary['max_drawdown_r']:.2f}R | mean cycle R {cycles['mean_cycle_r']}")
+    else:
+        print("no resolved legs in window -- insufficient data, no conclusions")
+    print(CAVEATS)
+    if not args.no_store:
+        from db.store import TelemetryStore
+        run_id = str(ULID())
+        notes = {"kind": "SIMULATED fisher-cycle (1D bias + 4H Fisher pullback/exhaustion cycling)",
+                 "strategy": "fisher_cycle", "exhaustion_threshold": args.exhaustion_threshold,
+                 "atr_multiplier": args.atr_multiplier, "cycles": cycles,
+                 "return_stats": {bias_tf: log_return_stats(bias_candles),
+                                  trigger_tf: log_return_stats(trigger_candles)}}
+        store_run(TelemetryStore()._connect(), run_id, bias_tf, trigger_tf,
+                  {"strategy": "fisher_cycle"}, t0, t1, summary, trades, notes,
+                  strategy_type="fisher_cycle")
+        print(f"stored: run_id={run_id} ({len(trades)} legs, fisher_cycle)")
+
+
+def run_fisher_cycle_sweep(cfg: dict, args) -> None:
+    tf = cfg.get("tf_pair", {"bias": "1d", "trigger": "4h"})
+    bias_tf, trigger_tf = tf["bias"], tf["trigger"]
+    validate_combo(bias_tf, trigger_tf)
+    thresholds = cfg.get("exhaustion_thresholds", [1.5, 2.0, 2.5])
+    atr_mults = cfg.get("atr_multipliers", [1.0, 1.5])
+    combos = [(thr, am) for thr in thresholds for am in atr_mults]
+    sweep_id = str(ULID())
+    print(f"sweep {cfg.get('sweep_name', 'fisher_cycle')} | {len(combos)} runs | sweep_id={sweep_id}")
+
+    now_ms = int(time.time() * 1000)
+    span = lambda t: 5000 * interval_seconds(t) * 1000
+    bias_candles = fetch_candles("BTC", bias_tf, now_ms - span(bias_tf), now_ms)
+    trigger_candles = fetch_candles("BTC", trigger_tf, now_ms - span(trigger_tf), now_ms)
+    t0, t1 = _window(trigger_candles)
+    print(f"  fetched {bias_tf}: {len(bias_candles)} | {trigger_tf}: {len(trigger_candles)} "
+          f"({t0:%Y-%m-%d} -> {t1:%Y-%m-%d})")
+    stats = {bias_tf: log_return_stats(bias_candles), trigger_tf: log_return_stats(trigger_candles)}
+
+    store_conn = None
+    if not args.no_store:
+        from db.store import TelemetryStore
+        store_conn = TelemetryStore()._connect()
+
+    results: list[tuple[tuple, dict, str]] = []
+    for idx, (thr, am) in enumerate(combos, 1):
+        summary = run_fisher_cycle_backtest(bias_candles, trigger_candles,
+                                            exhaustion_threshold=thr, atr_multiplier=am)
+        trades, cycles = summary["trades"], summary["cycles"]
+        run_id = str(ULID())
+        if store_conn is not None:
+            notes = {
+                "kind": "SIMULATED fisher-cycle (1D bias + 4H Fisher pullback/exhaustion cycling)",
+                "sweep_id": sweep_id, "strategy": "fisher_cycle",
+                "exhaustion_threshold": thr, "atr_multiplier": am,
+                "cycles": cycles, "return_stats": stats,
+            }
+            store_run(store_conn, run_id, bias_tf, trigger_tf, {"strategy": "fisher_cycle"},
+                      t0, t1, summary, trades, notes, strategy_type="fisher_cycle")
+        print(f"[{idx}/{len(combos)}] exh {thr} | atr {am} | cycles {cycles['count']} | "
+              f"{_summary_row(summary)}")
+        results.append(((thr, am), summary, run_id))
+
+    print("\n=== SIMULATED FISHER-CYCLE SWEEP COMPARISON (not live performance) ===")
+    print(f"sweep_id={sweep_id} | runs={len(results)} | {bias_tf}/{trigger_tf}")
+    header = (f"{'exh':<6}{'atr':<6}{'cycles':>8}{'legs':>7}{'W-L':>8}{'netR':>9}"
+              f"{'PF':>7}{'maxDD':>8}{'meanCycleR':>12}")
+    print(header)
+    print("-" * len(header))
+    for (thr, am), summary, _ in results:
+        pf = summary["profit_factor"]
+        mcr = summary["cycles"]["mean_cycle_r"]
+        print(f"{str(thr):<6}{str(am):<6}{summary['cycles']['count']:>8}"
+              f"{len(summary['trades']):>7}"
+              f"{str(summary['wins']) + '-' + str(summary['losses']):>8}"
+              f"{summary['net_r']:>+9.2f}{(f'{pf:.2f}' if pf is not None else '-'):>7}"
+              f"{summary['max_drawdown_r']:>8.2f}{(f'{mcr:+.3f}' if mcr is not None else '-'):>12}")
+    print("legs = individual long/short legs; cycles = entry..bias-flip macro runs "
+          "(performance unit). No per-leg R:R gate by design.")
+    print(CAVEATS)
+    if store_conn is not None:
+        print(f"stored: {len(results)} runs under sweep_id={sweep_id} (strategy_type=fisher_cycle)")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sweep", help="YAML sweep config; runs a batch instead of a single backtest")
-    ap.add_argument("--strategy", default="trend", choices=("trend", "counter_trend"))
+    ap.add_argument("--strategy", default="trend",
+                    choices=("trend", "counter_trend", "fisher_cycle"))
     ap.add_argument("--bias-tf", default="4h")
     ap.add_argument("--trigger-tf", default="1h")
     ap.add_argument("--indicators", default="default")
@@ -883,12 +1122,17 @@ def main() -> None:
     if args.sweep:
         with open(args.sweep, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
-        if cfg.get("strategy") == "counter_trend":
+        strategy = cfg.get("strategy", "trend")
+        if strategy == "counter_trend":
             run_counter_trend_sweep(cfg, args)
+        elif strategy == "fisher_cycle":
+            run_fisher_cycle_sweep(cfg, args)
         else:
             run_sweep(args)
     elif args.strategy == "counter_trend":
         run_counter_trend_single(args)
+    elif args.strategy == "fisher_cycle":
+        run_fisher_cycle_single(args)
     else:
         run_single(args)
 
