@@ -34,7 +34,7 @@ none does. Ultimate confirmation is only ever the dry-run forward test.
 
 Operative pre-registration: the constants block in
 `scripts/strategy_tournament.py`. Pre-registration commit:
-`PREREG3_COMMIT_HASH` (script + this section committed before
+`08b1853` (script + this section committed before
 `--phase explore` first ran).
 
 ### 2.1 Variants (all long/flat; position at close of bar j earns bar j+1)
@@ -134,6 +134,6 @@ Frozen inputs: `research/data/BTC_{1d,12h}_snapshot.json`. Results:
 
 ## Appendix: git commits
 
-1. `research(r3): strategy-tournament pre-registration` (PREREG3_COMMIT_HASH)
+1. `research(r3): strategy-tournament pre-registration` (08b1853)
 2. TBD (1D snapshot)
 3. TBD (results)
