@@ -120,12 +120,72 @@ stop-first ambiguity, taker 0.075%/side, 5,000-candle 4H retention);
 real fills and funding would only worsen a PF already ≤ 1.03. No live
 wiring; decision to pursue further or shelve is the user's.
 
+## ATR stop-multiplier extension — 2026-07-09 (follow-up)
+
+The 6-run sweep tested only atr_mult ∈ {1.0, 1.5}; a two-point
+"1.5 > 1.0" trend can't tell you whether wider stops keep helping,
+plateau, or reverse. Extended to {1.5, 2.0, 2.5, 3.0} at the fixed
+least-bad threshold 2.0 (3 new runs 2.0/2.5/3.0, sweep_id
+`01KX2JNPXEA65K4DWGD76JMFF1`; 1.5 reused from the 6-run sweep). Cycles
+stay 68 across all four — the macro count is set by the 1D bias, not
+the stop, as expected.
+
+| atr_mult | legs | W-L | net R | PF | max DD | mean cycle R | stop $ (ATR now / med) |
+|---|---|---|---|---|---|---|---|
+| 1.5 | 119 | 48-71 | +1.58 | 1.03 | 14.31 | +0.023 | $1,239 / $1,615 |
+| 2.0 | 110 | 47-63 | −1.28 | 0.97 | 13.79 | −0.019 | $1,652 / $2,153 |
+| 2.5 | 103 | 46-57 | −0.45 | 0.99 | 10.05 | −0.007 | $2,065 / $2,691 |
+| 3.0 | 102 | 49-53 | **+1.95** | **1.07** | **6.92** | +0.029 | $2,478 / $3,229 |
+
+### Curve shape — it does NOT keep climbing
+
+- **net R / PF wobble around breakeven, non-monotonically**: +1.58 →
+  −1.28 → −0.45 → +1.95 (PF 1.03 → 0.97 → 0.99 → 1.07). The value
+  DROPS from 1.5 to 2.0, then rises to 3.0. That is not a trend
+  continuing — it is sampling noise in a ±7%-of-1.0 PF band. There is
+  no edge to find by widening the stop; PF never escapes ~1.0.
+- **The one genuinely monotonic axis is max drawdown falling** (14.3 →
+  13.8 → 10.1 → 6.9R) — and that is precisely the mechanical artifact
+  the extension was designed to catch, not an improvement. As the stop
+  widens, fewer legs ever stop out (resolved losses 71 → 53; win rate
+  43% → 48% — the entries did not get better, the stop just stopped
+  cutting them), so losses convert from frequent-small to rare, and
+  drawdown shrinks without any gain in expectancy.
+
+### Dollar reality check (the disqualifier for the 3.0 cell)
+
+On current BTC 4H (price ~$61,963; ATR-14 $826 now / $1,076 median),
+the median move a threshold-2.0 leg actually captures is **$1,279**
+(n=247 resolved legs). Against that:
+
+- 1.5×ATR ≈ $1,239 stop ≈ **1.0×** the median leg move (balanced —
+  genuine risk management).
+- 3.0×ATR ≈ $2,478 stop ≈ **1.9×** the median leg move — the stop is
+  nearly double the move Fisher is supposed to be measuring. A losing
+  leg must travel ~2× the typical winning distance against you before
+  it stops. That is "hold and hope," not a stop.
+
+So the best-looking cell (3.0×, PF 1.07, DD 6.9R) is exactly the trap:
+its numbers improve because the stop has widened past the size of the
+trade, converting small frequent losses into rare large ones. Reported
+with the dollar context, it is disqualified, not a finding.
+
+**Conclusion: the extension strengthens the original null.** Widening
+the stop from 1.5 to 3.0 does not lift PF out of the ~1.0 breakeven
+band; the only thing that improves monotonically (drawdown) is a
+mechanical consequence of a stop growing wider than the move being
+traded. atr_mult 1.5 remains the widest defensible setting (stop ≈ leg
+move), and at 1.5 the strategy is still a well-sampled breakeven-minus.
+No basis to extend beyond 3.0. Decision to shelve or pursue is the
+user's; the data does not support pursuing.
+
 ## Git commits
 
 1. `feat: 1D bias (reuse compute_bias, no-lookahead) - Track 3 Part 1`
 2. `feat: fisher cycle state machine (isolated module) - Track 3 Part 2`
 3. `feat: dedicated cycle simulator + 6-run sweep - Track 3 Part 3`
 4. `docs: track 3 build doc + comparison table (real output only)`
+5. `docs: track 3 ATR stop-multiplier extension - null strengthened (no code change)`
 
 ## Open items
 
