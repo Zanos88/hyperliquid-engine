@@ -198,8 +198,86 @@ python scripts/strategy_tournament.py --phase confirm   # one-shot, write-once
 Frozen inputs: `research/data/BTC_{1d,12h}_snapshot.json`. Results:
 `research/output/tournament_explore.json`, `tournament_confirm.json`.
 
+## 9. Round 4 — breadth tournament (same family, cross-asset portfolio)
+
+Pre-registration commit `e6b9028` (script `scripts/breadth_tournament.py`,
+committed before results): the SAME seven variants, unchanged, as an
+equal-weight portfolio across **BTC, ETH, SOL, DOGE, XRP, AVAX, LINK** 1D
+(all ≥ 2,100 gap-free bars from 2020-08/09; snapshots frozen in `1665468`).
+Same fees per sleeve, same split discipline (common window 1,914 bars;
+exploration 2021-04-12 → 2024-12-10; holdout reserved 2024-12-11 →
+2026-07-08), family-max shift luck bar with the same offset per sleeve,
+selection floor ≥ 70 total trades.
+
+### 9.1 Results — exploration
+
+Equal-weight buy-and-hold: net ×2.09, Sharpe +0.25, maxDD(log) 1.82.
+**Luck bar: 2.05** (shift-null median 0.37).
+
+| Variant | Net × | Ann % | Sharpe | maxDD(log) | Trades |
+|---|---|---|---|---|---|
+| sma50 | 3.41 | +39.7 | +0.69 | 0.81 | 574 |
+| sma100 | 1.44 | +10.3 | +0.20 | 1.32 | 466 |
+| sma200 | 1.89 | +18.9 | +0.33 | 1.10 | 316 |
+| donch_20_10 | 2.94 | +34.2 | +0.69 | 0.74 | 254 |
+| donch_55_20 | 2.15 | +23.3 | +0.48 | 0.87 | 129 |
+| **tsmom30** | **3.99** | **+45.8** | **+0.78** | 0.74 | 736 |
+| tsmom90 | 1.49 | +11.5 | +0.22 | 1.35 | 468 |
+
+**Selection: none qualifies (best 0.78 vs bar 2.05) → NULL; the breadth
+holdout never ran and remains untouched.**
+
+### 9.2 Why breadth did not buy power here
+
+Crypto sleeves are highly correlated — they crashed and rallied together
+across 2021–2026 — so a 7-asset portfolio has an effective breadth closer
+to ~1.5 assets, and the family-max luck distribution actually *widened*
+(p95 2.05 vs 1.40 single-asset): a randomly-timed 50%-exposure portfolio
+occasionally sidesteps the common crash across all sleeves at once. The
+futures-literature power gain from breadth assumes cross-sectionally
+diverse assets; this asset class does not provide that.
+
+## 10. Program-level conclusion (rounds 1–4)
+
+Four pre-registered rounds, every bar honored, no holdout burned without
+qualification:
+
+| Round | Hypothesis class | Result |
+|---|---|---|
+| 1 | Intraday factor confluence (4 factors, 256 cells) | Null — nothing above chance |
+| 2 | Best round-1 cell, 3 confirmatory tests | **Falsified** — 0/3, sign reversed |
+| 3 | Classic trend, BTC 1D/12H | Beats B&H everywhere; below luck bar |
+| 4 | Same trend family, 7-asset breadth | Beats B&H (0.78 vs 0.25); below luck bar |
+
+1. **No statistically provable edge exists in the data this program can
+   reach** (candles, one asset class, ≤ 5.9 years, one full cycle). Any
+   pipeline that "finds" one here is finding luck — round 2 demonstrated
+   the reversal empirically.
+2. **The trend result is directionally robust and replicates external
+   evidence:** 21 of 21 trend cells across two independent designs beat
+   buy-and-hold risk-adjusted, with roughly half the drawdown, net of
+   fees. The correct epistemic status is *consistent with a real, modest
+   effect that this sample cannot prove* — and as a **risk-management
+   claim** (drawdown control for desired crypto exposure) rather than an
+   alpha claim, it is the one thing four hostile rounds did not damage.
+3. **The honest next instrument is the dry-run forward test**, not more
+   candle studies: a long/flat trend config (tsmom30 or sma50-class)
+   forward-tested in this repo's existing dry-run infrastructure gathers
+   true out-of-sample evidence at zero capital risk. All holdouts (1D,
+   12H, breadth) also remain unburned for one future pre-registered
+   confirmation after a forward-test period.
+4. **Structurally different edges need structurally different data:**
+   funding-rate carry (Hyperliquid exposes funding history; carry has a
+   structural payer), basis, order-flow/liquidation data — new plumbing,
+   new pre-registrations. Longer BTC history (2013+, external source)
+   would triple the trend sample. These are the only remaining honest
+   escalation paths.
+
 ## Appendix: git commits
 
 1. `research(r3): strategy-tournament pre-registration` (08b1853)
 2. `research(r3): frozen 1D snapshot + prereg hash recorded` (f9f0780)
-3. `research(r3): exploration null at luck bar; breadth flagged as round 4` (this commit)
+3. `research(r3): exploration null at luck bar; breadth flagged as round 4` (5f24fcb)
+4. `research(r4): breadth-tournament pre-registration` (e6b9028)
+5. `research(r4): frozen 1D snapshots for the 6 alt sleeves` (1665468)
+6. `research(r4): breadth null at luck bar; program-level conclusion` (this commit)

@@ -1,0 +1,119 @@
+{
+ "panel": {
+  "universe": [
+   "BTC",
+   "ETH",
+   "SOL",
+   "DOGE",
+   "XRP",
+   "AVAX",
+   "LINK"
+  ],
+  "tf": "1d",
+  "common_bars": 1914,
+  "explore_window": "2021-04-12T23:59:59+00:00 .. 2024-12-10T23:59:59+00:00",
+  "holdout_window": "2024-12-11T23:59:59+00:00 .. 2026-07-08T23:59:59+00:00",
+  "explore_end": 1338,
+  "last": 1913,
+  "buy_hold_explore": {
+   "bars": 1339,
+   "years": 3.67,
+   "net_log_return": 0.7379595586266029,
+   "net_multiple": 2.091663241098581,
+   "ann_return_pct": 22.28222329009992,
+   "sharpe": 0.2501665198796178,
+   "max_dd_log": 1.8170633915048073
+  },
+  "calibration_bar_sharpe": 2.052556716368293,
+  "calibration_median": 0.36902187417230714,
+  "variants": {
+   "sma50": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 1.2255999862724112,
+     "net_multiple": 3.4062091485539177,
+     "ann_return_pct": 39.66662147875384,
+     "sharpe": 0.6949040976027885,
+     "max_dd_log": 0.8056714555617842,
+     "total_trades": 574
+    }
+   },
+   "sma100": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 0.36122876249047065,
+     "net_multiple": 1.435091718486185,
+     "ann_return_pct": 10.347896584066119,
+     "sharpe": 0.20052031695135314,
+     "max_dd_log": 1.3181472849095799,
+     "total_trades": 466
+    }
+   },
+   "sma200": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 0.6347665359462998,
+     "net_multiple": 1.8865816410426781,
+     "ann_return_pct": 18.890409402097298,
+     "sharpe": 0.33397278584775625,
+     "max_dd_log": 1.102159224593517,
+     "total_trades": 316
+    }
+   },
+   "donch_20_10": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 1.0783065456006702,
+     "net_multiple": 2.939697090500757,
+     "ann_return_pct": 34.169962058423955,
+     "sharpe": 0.6885815065253991,
+     "max_dd_log": 0.7432782919596738,
+     "total_trades": 254
+    }
+   },
+   "donch_55_20": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 0.7677512576037462,
+     "net_multiple": 2.1549149525517657,
+     "ann_return_pct": 23.27931595888366,
+     "sharpe": 0.47795064078828264,
+     "max_dd_log": 0.8723048777113289,
+     "total_trades": 129
+    }
+   },
+   "tsmom30": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 1.3837082001965582,
+     "net_multiple": 3.9896687212395414,
+     "ann_return_pct": 45.817707194797386,
+     "sharpe": 0.7830748840873349,
+     "max_dd_log": 0.7435265479165414,
+     "total_trades": 736
+    }
+   },
+   "tsmom90": {
+    "explore": {
+     "bars": 1339,
+     "years": 3.67,
+     "net_log_return": 0.39796271475902156,
+     "net_multiple": 1.4887885190337178,
+     "ann_return_pct": 11.458400750910513,
+     "sharpe": 0.21526125412355093,
+     "max_dd_log": 1.3535614351518412,
+     "total_trades": 468
+    }
+   }
+  }
+ },
+ "selection_criteria": "highest exploration portfolio Sharpe among the 7 variants, requiring >= 70 total exploration trades AND Sharpe > family-max shift-null 95th pct AND Sharpe > equal-weight buy-and-hold exploration Sharpe",
+ "selection": null,
+ "ran_at_utc": "2026-07-09T11:46:38+00:00"
+}
