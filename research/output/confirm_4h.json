@@ -1,0 +1,50 @@
+{
+ "label": "Test 1 \u2014 4H holdout (generalization)",
+ "tf": "4h",
+ "window": "holdout",
+ "rule_conditions": [
+  "F4_extended_low",
+  "F2_fisher_below_rline",
+  "F1_near_support"
+ ],
+ "direction": "long",
+ "horizon_bars": 4,
+ "window_first_close_utc": "2025-11-01T07:59:59+00:00",
+ "window_last_close_utc": "2026-07-08T11:59:59+00:00",
+ "rows": 1496,
+ "uncond_mean": -0.001535768325811636,
+ "n": 59,
+ "fire_rate": 0.03943850267379679,
+ "mean": -0.003075778946578021,
+ "hit_rate": 0.4576271186440678,
+ "t_nw": -0.8061825471632117,
+ "phase_subsamples": [
+  {
+   "offset": 0,
+   "n": 13,
+   "mean": -0.010846969802211427,
+   "t": -2.374546409757126
+  },
+  {
+   "offset": 1,
+   "n": 9,
+   "mean": -0.003902811945117262,
+   "t": -0.4135163143554624
+  },
+  {
+   "offset": 2,
+   "n": 20,
+   "mean": 0.0014468660191924007,
+   "t": 0.31502763185382804
+  },
+  {
+   "offset": 3,
+   "n": 17,
+   "mean": -0.0020160213704204324,
+   "t": -0.3631663249723727
+  }
+ ],
+ "pass_criteria": "mean > 0 AND t_NW >= 2.0",
+ "passed": false,
+ "ran_at_utc": "2026-07-09T11:33:34+00:00"
+}

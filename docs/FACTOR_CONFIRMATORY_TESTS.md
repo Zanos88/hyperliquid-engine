@@ -1,7 +1,8 @@
 # Factor Confirmatory Tests (Round 2) — "Washed-Out Dip Near Support"
 
-Study date: 2026-07-09. Status: **RESEARCH ONLY — pre-registered; results
-pending.** Follows docs/FACTOR_CORRELATION_STUDY.md (round 1, null result).
+Study date: 2026-07-09. Status: **RESEARCH ONLY — COMPLETE. Result: 0/3
+FAIL — every test's conditional mean was NEGATIVE; the hypothesis is
+falsified.** Follows docs/FACTOR_CORRELATION_STUDY.md (round 1, null result).
 
 > **RESEARCH — NO TRADING IMPACT.** No trades, no strategy module, no DB.
 > Frozen historical Hyperliquid candles; descriptive statistics; no cost
@@ -110,19 +111,65 @@ execute if **any** of the three exists, and there is deliberately no
 
 ## 3. Results
 
-*(filled after the single `--phase run`)*
+Single `--phase run`, 2026-07-09, all three tests in one invocation.
+**0/3 passed** at the pre-registered bar (mean > 0 AND t_NW ≥ 2.0).
 
-### 3.1 Test 0 — 1H holdout (direct confirmation)
+### 3.1 Test 0 — 1H holdout (direct confirmation): **FAIL**
 
-TBD
+| Window | Rows | Uncond. mean | n | Fire rate | Mean | Hit rate | t_NW | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| 2026-05-07 → 2026-07-08 | 1,497 | −0.00068 | 56 | 3.7% | **−0.00246** | **0.48** | **−1.94** | **FAIL** |
 
-### 3.2 Generalization tests (Test 1 — 4H holdout; Test 2 — 12H full series)
+Not a marginal miss — a full sign reversal. The discovery cell was
++0.00243 mean / 0.68 hit / t +2.59 in exploration; on genuinely unseen
+rows of the *same timeframe* the identical rule produced −0.00246 mean /
+0.48 hit / t −1.94, i.e. nearly significant in the **wrong** direction,
+and worse than the window's unconditional baseline (−0.00068). Every one
+of the four non-overlapping phase subsamples is negative (−0.0037, −0.0018,
+−0.0026, −0.0020).
 
-TBD
+### 3.2 Generalization tests: **FAIL, FAIL**
+
+| Test | Window | Rows | Uncond. mean | n | Fire rate | Mean | Hit | t_NW | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 — 4H holdout | 2025-11-01 → 2026-07-08 | 1,496 | −0.00154 | 59 | 3.9% | −0.00308 | 0.46 | −0.81 | FAIL |
+| 2 — 12H full | 2022-03-02 → 2026-07-06 | 3,176 | **+0.00046** | 109 | 3.4% | −0.00195 | 0.53 | −0.37 | FAIL |
+
+Test 1 is consistent with its stated prior (the rule was already negative
+on 4H exploration). Test 2 is the broadest window (4.4 years, ~half never
+fetched before round 2) and the firing bars underperform a *positive*
+unconditional baseline by ~0.24% per 2-day window. Eleven of the twelve
+phase subsamples across the three tests have negative means.
 
 ## 4. Findings (honest read)
 
-*(filled after results)*
+1. **The hypothesis is falsified — decisively, not marginally.** Zero of
+   three pre-registered tests passed; all three conditional means are
+   negative; all three sit below their windows' unconditional baselines.
+   "Fisher ≤ −2, below R-line, near support" does not predict positive
+   4-bar forward returns on any timeframe tested. If the data weakly
+   suggest anything, it is the opposite: a washed-out dip near support
+   tends to keep falling over the next 4 bars.
+2. **Test 0 is the textbook exploration-artifact signature.** Same rule,
+   same timeframe, adjacent time period: t +2.59 in-sample → t −1.94
+   out-of-sample. Round 1's calibration bar (which said a +2.59 cell
+   appears in about half of shuffled datasets) was right to reject this
+   cell, and the confirmatory test now demonstrates *why* empirically.
+3. **The failure is consistent, not window-specific.** Three timeframes,
+   windows spanning 2022–2026 including ~2.2 years never seen by any prior
+   phase of this program, 11/12 negative phase subsamples. "Unlucky
+   window" is hard to sustain.
+4. **Do not flip the sign.** A short version of this rule ("knife keeps
+   falling") would be a *new* hypothesis mined from these confirmatory
+   results — running it on this same data would be exactly the selection
+   loop this program is built to avoid. It would need its own
+   pre-registration on data these tests haven't consumed.
+5. **This closes the confluence-weighting thread for these four factors.**
+   Round 1: no factor or 64-cell combination cleared chance-calibrated
+   bars anywhere. Round 2: the single best exploration cell failed 0/3
+   confirmatory tests with reversed sign. Track 4 (weighted confluence on
+   these factors) has no empirical support; further rounds should change
+   the factor set or the question, not re-test this rule.
 
 ## 5. Limitations
 
@@ -145,5 +192,5 @@ Frozen inputs: `research/data/BTC_{1h,4h,12h}_snapshot.json`. Results:
 ## Appendix: git commits
 
 1. `research(r2): confirmatory-test pre-registration` (1b8348c)
-2. TBD (12H snapshot)
-3. TBD (results)
+2. `research(r2): frozen 12H snapshot + prereg hash recorded` (863c2cd)
+3. `research(r2): results — 0/3 fail, hypothesis falsified` (this commit)

@@ -1,0 +1,50 @@
+{
+ "label": "Test 2 \u2014 12H full series (generalization)",
+ "tf": "12h",
+ "window": "full",
+ "rule_conditions": [
+  "F4_extended_low",
+  "F2_fisher_below_rline",
+  "F1_near_support"
+ ],
+ "direction": "long",
+ "horizon_bars": 4,
+ "window_first_close_utc": "2022-03-02T11:59:59+00:00",
+ "window_last_close_utc": "2026-07-06T23:59:59+00:00",
+ "rows": 3176,
+ "uncond_mean": 0.0004647059906150043,
+ "n": 109,
+ "fire_rate": 0.03431989924433249,
+ "mean": -0.001953536594047957,
+ "hit_rate": 0.5321100917431193,
+ "t_nw": -0.3743830669883323,
+ "phase_subsamples": [
+  {
+   "offset": 0,
+   "n": 20,
+   "mean": -0.0012662205493735596,
+   "t": -0.14606453407101347
+  },
+  {
+   "offset": 1,
+   "n": 26,
+   "mean": 0.0031801654078776236,
+   "t": 0.498862183049391
+  },
+  {
+   "offset": 2,
+   "n": 26,
+   "mean": -0.006328636453687404,
+   "t": -0.6853379246824148
+  },
+  {
+   "offset": 3,
+   "n": 37,
+   "mean": -0.002858130556018969,
+   "t": -0.3470251973214616
+  }
+ ],
+ "pass_criteria": "mean > 0 AND t_NW >= 2.0",
+ "passed": false,
+ "ran_at_utc": "2026-07-09T11:33:35+00:00"
+}

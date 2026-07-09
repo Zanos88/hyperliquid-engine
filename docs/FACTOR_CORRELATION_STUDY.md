@@ -400,8 +400,10 @@ doc is derived from those files).
 1. F1 from 4H structure for 1H bars (the production bias/trigger pairing)
    — the one named variant this round deliberately did not test.
 2. The "neutral-factor hump" observation (§9.4) as a hypothesis of its own
-   — would need a fresh pre-registration; the current holdout remains
-   uncontaminated and could serve it.
+   — would need a fresh pre-registration. **Note (2026-07-09): the 1H and
+   4H holdouts were consumed by round 2's confirmatory tests of the top
+   exploration cell (docs/FACTOR_CONFIRMATORY_TESTS.md — 0/3 FAIL, sign
+   reversed); a future hypothesis needs fresh data windows.**
 3. Alternative targets (ATR-normalized returns, max-favorable-excursion)
    — out of scope round 1 by pre-registration.
 4. Track 4 (weighted confluence) is **not** justified by this study.
