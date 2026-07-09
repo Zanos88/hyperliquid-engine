@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import math
 import time
 from bisect import bisect_right
@@ -35,7 +36,7 @@ from datetime import datetime, timezone
 import yaml
 from ulid import ULID
 
-from data.feed import Candle, fetch_candles
+from data.feed import Candle, fetch_candles, fetch_funding_history
 from strategy.signals import (
     DEFAULT_ATR_MULTIPLIER,
     DEFAULT_BLUE_SKY_ATR_MULTIPLIER,
@@ -68,6 +69,27 @@ from strategy.trigger_1h import fisher_transform
 
 TAKER_FEE = 0.00075  # per side, verified in RESEARCH_FINDINGS Rev 3
 WARMUP_TRIGGER_BARS = 40      # fisher(10) + obv sma(20) + atr(14) + margin
+STANDDOWN_WINDOW_MS = 30 * 24 * 3600 * 1000  # trailing window for funding pctile / OI z
+FUNDING_SNAPSHOT_PATH = os.path.join(os.path.dirname(__file__),
+                                     "research", "data", "BTC_funding_history.json")
+
+
+def load_funding_series(now_ms: int) -> list[tuple[int, float]]:
+    """Frozen-input discipline: read the committed funding snapshot when it
+    exists; otherwise fetch the full history once and freeze it."""
+    if os.path.exists(FUNDING_SNAPSHOT_PATH):
+        with open(FUNDING_SNAPSHOT_PATH, encoding="utf-8") as f:
+            doc = json.load(f)
+        return [(int(t), float(v)) for t, v in doc["rows"]]
+    rows = fetch_funding_history("BTC", 0, now_ms)
+    os.makedirs(os.path.dirname(FUNDING_SNAPSHOT_PATH), exist_ok=True)
+    from datetime import datetime, timezone
+    doc = {"coin": "BTC", "source": "hyperliquid fundingHistory (hourly)",
+           "fetched_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "row_count": len(rows), "rows": rows}
+    with open(FUNDING_SNAPSHOT_PATH, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+    return rows
 WARMUP_BIAS_BARS = 120        # fractal/S-R structure + ichimoku(52+disp)
 
 
@@ -201,7 +223,12 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
                  fisher4h_entry: bool = False,
                  fisher4h_exit: bool = False,
                  exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
-                 candles_4h: list[Candle] | None = None) -> dict:
+                 candles_4h: list[Candle] | None = None,
+                 standdown_entry: bool = False,
+                 funding_series: list[tuple[int, float]] | None = None,
+                 funding_pctile_threshold: float = 85.0,
+                 oi_series: list[tuple[int, float]] | None = None,
+                 oi_z_min: float | None = None) -> dict:
     """Walk-forward over trigger closes; mirrors main.py exactly:
     300-bar slices, edge-triggered alignment, one open trade at a time
     (max_concurrent=1, the live default).
@@ -223,9 +250,52 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
         idx = bisect_right(close_ms_4h, trigger_close_ms) - 1
         return fisher4h_series[idx][1] if idx >= 0 else 0.0
 
+    funding_times: list[int] = []
+    funding_vals: list[float] = []
+    if standdown_entry:
+        if not funding_series:
+            raise ValueError("standdown_entry requires funding_series")
+        funding_times = [t for t, _ in funding_series]
+        funding_vals = [v for _, v in funding_series]
+        first_eval_close = trigger_candles[WARMUP_TRIGGER_BARS].close_time_ms
+        if funding_times[0] > first_eval_close - STANDDOWN_WINDOW_MS:
+            raise ValueError("funding_series must start >=30d before the first evaluated bar "
+                             "(causal trailing percentile needs a full window)")
+
+    def _funding_pctile_at(trigger_close_ms: int) -> float:
+        """Percentile of the latest funding print within its own TRAILING
+        30-day window ending at/before this trigger close — causal by
+        construction (never normalized against the full series)."""
+        hi = bisect_right(funding_times, trigger_close_ms)
+        lo = bisect_right(funding_times, trigger_close_ms - STANDDOWN_WINDOW_MS)
+        window = funding_vals[lo:hi]
+        current = funding_vals[hi - 1]
+        return 100.0 * sum(1 for v in window if v <= current) / len(window)
+
+    oi_times: list[int] = []
+    oi_vals: list[float] = []
+    if oi_series:
+        oi_times = [t for t, _ in oi_series]
+        oi_vals = [v for _, v in oi_series]
+
+    def _oi_z_at(trigger_close_ms: int) -> float | None:
+        """OI z-score vs its trailing 30-day distribution (dormant until an
+        OI history source is unlocked — Phase 0 §0.2)."""
+        if not oi_times:
+            return None
+        hi = bisect_right(oi_times, trigger_close_ms)
+        lo = bisect_right(oi_times, trigger_close_ms - STANDDOWN_WINDOW_MS)
+        window = oi_vals[lo:hi]
+        if len(window) < 2:
+            return None
+        mu = sum(window) / len(window)
+        sd = (sum((v - mu) ** 2 for v in window) / (len(window) - 1)) ** 0.5
+        return (oi_vals[hi - 1] - mu) / sd if sd > 0 else None
+
     trades: list[TradeResult] = []
     suppressed = 0
     suppressed_exhaustion = 0
+    suppressed_standdown = 0
     prev_alignment: str | None = None
     open_until_index = -1  # enforce one-position-at-a-time like the live gate
 
@@ -246,6 +316,13 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
             fisher4h_value=(_fisher4h_at(trigger_candles[i].close_time_ms)
                             if fisher4h_entry else None),
             exhaustion_threshold=exhaustion_threshold,
+            standdown_entry_filter=standdown_entry,
+            funding_pctile_value=(_funding_pctile_at(trigger_candles[i].close_time_ms)
+                                  if standdown_entry else None),
+            funding_pctile_threshold=funding_pctile_threshold,
+            oi_z_value=(_oi_z_at(trigger_candles[i].close_time_ms)
+                        if standdown_entry else None),
+            oi_z_min=oi_z_min,
         )
 
         enabled_votes = [r["vote"] for n, r in readings.items() if r["enabled"]]
@@ -260,6 +337,8 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
         if isinstance(result, SuppressedSignal):
             if result.kind == "fisher4h_exhaustion":
                 suppressed_exhaustion += 1
+            elif result.kind == "exhaustion_standdown":
+                suppressed_standdown += 1
             else:
                 suppressed += 1
             continue
@@ -299,6 +378,7 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
         "unresolved": len(trades) - len(resolved),
         "suppressed_rr": suppressed,
         "suppressed_exhaustion": suppressed_exhaustion,
+        "suppressed_standdown": suppressed_standdown,
         "gross_r": sum(t.gross_r for t in resolved if t.gross_r is not None),
         "net_r": sum(net_rs),
         "avg_net_r": (sum(net_rs) / len(net_rs)) if net_rs else None,
@@ -625,7 +705,9 @@ def _summary_row(summary: dict) -> str:
             f"W-L {summary['wins']}-{summary['losses']} | wr {wr:>4} | "
             f"net {summary['net_r']:+7.2f}R | PF {pf:>5} | "
             f"maxDD {summary['max_drawdown_r']:5.2f}R | "
-            f"supp_rr {summary['suppressed_rr']}")
+            f"supp_rr {summary['suppressed_rr']}"
+            + (f" | supp_std {summary['suppressed_standdown']}"
+               if summary.get("suppressed_standdown") else ""))
 
 
 # ── single-run mode ──
@@ -648,13 +730,19 @@ def run_single(args) -> None:
                       else trigger_candles if args.trigger_tf == "4h"
                       else fetch_candles("BTC", "4h", now_ms - span("4h"), now_ms))
 
+    funding_series = load_funding_series(now_ms) if args.standdown_entry else None
+
     summary = run_backtest(bias_candles, trigger_candles, config, args.ichimoku_variant,
                            stop_model=args.stop_model, atr_multiplier=args.atr_multiplier,
                            target_model=args.target_model,
                            blue_sky_atr_multiplier=args.blue_sky_atr_multiplier,
                            fisher4h_entry=args.fisher4h_entry, fisher4h_exit=args.fisher4h_exit,
                            exhaustion_threshold=args.exhaustion_threshold,
-                           candles_4h=candles_4h)
+                           candles_4h=candles_4h,
+                           standdown_entry=args.standdown_entry,
+                           funding_series=funding_series,
+                           funding_pctile_threshold=args.funding_pctile,
+                           oi_z_min=args.oi_z_min)
     trades = summary.pop("trades")
 
     print("\n=== SIMULATED BACKTEST RESULT (not live performance) ===")
@@ -666,12 +754,17 @@ def run_single(args) -> None:
           + (f"@{args.blue_sky_atr_multiplier}" if args.target_model == "blue_sky_atr" else "")
           + (f" | fisher4h E={args.fisher4h_entry} X={args.fisher4h_exit}"
              f"@{args.exhaustion_threshold}"
-             if (args.fisher4h_entry or args.fisher4h_exit) else ""))
+             if (args.fisher4h_entry or args.fisher4h_exit) else "")
+          + (f" | standdown fund>={args.funding_pctile}pct"
+             + (f" & OIz>={args.oi_z_min}" if args.oi_z_min is not None else " (OI dormant)")
+             if args.standdown_entry else ""))
     print(f"window: {t0:%Y-%m-%d} -> {t1:%Y-%m-%d} | bars evaluated: {summary['bars_evaluated']}")
     print(f"signals taken: {len(trades)} (resolved {summary['resolved']}, "
           f"unresolved {summary['unresolved']}) | suppressed by R:R gate: {summary['suppressed_rr']}"
           + (f" | by 4H exhaustion: {summary['suppressed_exhaustion']}"
-             if summary["suppressed_exhaustion"] else ""))
+             if summary["suppressed_exhaustion"] else "")
+          + (f" | by stand-down: {summary['suppressed_standdown']}"
+             if summary["suppressed_standdown"] else ""))
     if summary["resolved"]:
         print(f"wins {summary['wins']} / losses {summary['losses']} "
               f"(win rate {summary['win_rate']:.1%})")
@@ -698,6 +791,11 @@ def run_single(args) -> None:
             "exhaustion_threshold": (args.exhaustion_threshold
                                      if (args.fisher4h_entry or args.fisher4h_exit) else None),
             "suppressed_exhaustion": summary["suppressed_exhaustion"],
+            "standdown_entry": args.standdown_entry,
+            "funding_pctile_threshold": args.funding_pctile if args.standdown_entry else None,
+            "oi_z_min": args.oi_z_min if args.standdown_entry else None,
+            "oi_used": False,
+            "suppressed_standdown": summary["suppressed_standdown"],
             "return_stats": {args.bias_tf: log_return_stats(bias_candles),
                              args.trigger_tf: log_return_stats(trigger_candles)},
         }
@@ -716,6 +814,7 @@ def expand_sweep(cfg: dict) -> list[dict]:
     combos: list[dict] = []
     for grid in cfg["grids"]:
         fisher_variants = grid.get("fisher4h", [{"entry": False, "exit": False}])
+        standdown_variants = grid.get("standdown", [{"entry": False}])
         target_models = grid.get("target_models", ["nearest_structure"])
         unknown_targets = set(target_models) - set(TARGET_MODELS)
         if unknown_targets:
@@ -737,17 +836,26 @@ def expand_sweep(cfg: dict) -> list[dict]:
                             thresholds = fv.get("thresholds", [FISHER4H_EXHAUSTION_THRESHOLD]) \
                                 if (entry or exit_) else [None]
                             for thr in thresholds:
-                                combos.append({
-                                    "grid": grid["name"],
-                                    "bias_tf": tf["bias"], "trigger_tf": tf["trigger"],
-                                    "indicators": ind,
-                                    "stop_model": sm["model"], "atr_multiplier": mult,
-                                    "target_model": tm,
-                                    "blue_sky_atr_multiplier": (
-                                        blue_sky_mult if tm == "blue_sky_atr" else None),
-                                    "fisher4h_entry": entry, "fisher4h_exit": exit_,
-                                    "exhaustion_threshold": thr,
-                                })
+                                for sd in standdown_variants:
+                                    sd_on = bool(sd.get("entry"))
+                                    pctiles = sd.get("funding_pctiles", [85.0]) if sd_on else [None]
+                                    z_mins = sd.get("oi_z_mins", [None]) if sd_on else [None]
+                                    for pct in pctiles:
+                                        for zm in z_mins:
+                                            combos.append({
+                                                "grid": grid["name"],
+                                                "bias_tf": tf["bias"], "trigger_tf": tf["trigger"],
+                                                "indicators": ind,
+                                                "stop_model": sm["model"], "atr_multiplier": mult,
+                                                "target_model": tm,
+                                                "blue_sky_atr_multiplier": (
+                                                    blue_sky_mult if tm == "blue_sky_atr" else None),
+                                                "fisher4h_entry": entry, "fisher4h_exit": exit_,
+                                                "exhaustion_threshold": thr,
+                                                "standdown_entry": sd_on,
+                                                "funding_pctile": pct,
+                                                "oi_z_min": zm,
+                                            })
     return combos
 
 
@@ -756,6 +864,15 @@ def _fisher_label(c: dict) -> str:
         return "off"
     parts = ("E" if c["fisher4h_entry"] else "") + ("X" if c["fisher4h_exit"] else "")
     return f"{parts}@{c['exhaustion_threshold']}"
+
+
+def _standdown_label(c: dict) -> str:
+    if not c.get("standdown_entry"):
+        return "off"
+    label = f"F{c['funding_pctile']:.0f}"
+    if c.get("oi_z_min") is not None:
+        label += f"+Z{c['oi_z_min']}"
+    return label
 
 
 _TARGET_ABBREV = {"nearest_structure": "nearest", "fib_extension_preferred": "fib_ext",
@@ -772,7 +889,8 @@ def _target_label(c: dict) -> str:
 def _combo_label(c: dict) -> str:
     stop = c["stop_model"] + (f"@{c['atr_multiplier']}" if c["atr_multiplier"] else "")
     return (f"{c['bias_tf']}/{c['trigger_tf']} | {c['indicators']:<24} | "
-            f"{stop:<14} | tgt {_target_label(c):<12} | f4h {_fisher_label(c):<7}")
+            f"{stop:<14} | tgt {_target_label(c):<12} | f4h {_fisher_label(c):<7} | "
+            f"std {_standdown_label(c):<8}")
 
 
 def run_sweep(args) -> None:
@@ -790,6 +908,13 @@ def run_sweep(args) -> None:
     unique_tfs = {c["bias_tf"] for c in combos} | {c["trigger_tf"] for c in combos}
     if any(c["fisher4h_entry"] or c["fisher4h_exit"] for c in combos):
         unique_tfs.add("4h")
+    funding_series = (load_funding_series(now_ms)
+                      if any(c.get("standdown_entry") for c in combos) else None)
+    if funding_series:
+        from datetime import datetime, timezone
+        f0 = datetime.fromtimestamp(funding_series[0][0] / 1000, tz=timezone.utc)
+        f1 = datetime.fromtimestamp(funding_series[-1][0] / 1000, tz=timezone.utc)
+        print(f"  funding series: {len(funding_series)} hourly rows ({f0:%Y-%m-%d} -> {f1:%Y-%m-%d})")
     unique_tfs = sorted(unique_tfs, key=interval_seconds)
     candles: dict[str, list[Candle]] = {}
     for tf in unique_tfs:
@@ -817,6 +942,10 @@ def run_sweep(args) -> None:
             fisher4h_exit=combo["fisher4h_exit"],
             exhaustion_threshold=combo["exhaustion_threshold"] or FISHER4H_EXHAUSTION_THRESHOLD,
             candles_4h=candles.get("4h"),
+            standdown_entry=combo["standdown_entry"],
+            funding_series=funding_series if combo["standdown_entry"] else None,
+            funding_pctile_threshold=combo["funding_pctile"] or 85.0,
+            oi_z_min=combo["oi_z_min"],
         )
         trades = summary["trades"]
         run_id = str(ULID())
@@ -833,6 +962,11 @@ def run_sweep(args) -> None:
                 "fisher4h_exit": combo["fisher4h_exit"],
                 "exhaustion_threshold": combo["exhaustion_threshold"],
                 "suppressed_exhaustion": summary["suppressed_exhaustion"],
+                "standdown_entry": combo["standdown_entry"],
+                "funding_pctile_threshold": combo["funding_pctile"],
+                "oi_z_min": combo["oi_z_min"],
+                "oi_used": bool(combo["oi_z_min"]),
+                "suppressed_standdown": summary["suppressed_standdown"],
                 "return_stats": {combo["bias_tf"]: stats[combo["bias_tf"]],
                                  combo["trigger_tf"]: stats[combo["trigger_tf"]]},
             }
@@ -844,8 +978,8 @@ def run_sweep(args) -> None:
     print("\n=== SIMULATED SWEEP COMPARISON (not live performance) ===")
     print(f"sweep_id={sweep_id} | runs={len(results)}")
     header = (f"{'grid':<14} {'tfs':<9} {'indicators':<24} {'stop':<14} {'target':<13} "
-              f"{'f4h':<8} {'trades':>6} {'W-L':>7} {'netR':>8} {'PF':>6} {'maxDD':>7} "
-              f"{'supp_rr':>8} {'supp_exh':>9}")
+              f"{'f4h':<8} {'std':<9} {'trades':>6} {'W-L':>7} {'netR':>8} {'PF':>6} {'maxDD':>7} "
+              f"{'supp_rr':>8} {'supp_exh':>9} {'supp_std':>9}")
     print(header)
     print("-" * len(header))
     for combo, summary, _ in results:
@@ -853,11 +987,11 @@ def run_sweep(args) -> None:
         stop = combo["stop_model"] + (f"@{combo['atr_multiplier']}" if combo["atr_multiplier"] else "")
         print(f"{combo['grid']:<14} {combo['bias_tf'] + '/' + combo['trigger_tf']:<9} "
               f"{combo['indicators']:<24} {stop:<14} {_target_label(combo):<13} "
-              f"{_fisher_label(combo):<8} "
+              f"{_fisher_label(combo):<8} {_standdown_label(combo):<9} "
               f"{len(summary['trades']):>6} {str(summary['wins']) + '-' + str(summary['losses']):>7} "
               f"{summary['net_r']:>+8.2f} {(f'{pf:.2f}' if pf is not None else '-'):>6} "
               f"{summary['max_drawdown_r']:>7.2f} {summary['suppressed_rr']:>8} "
-              f"{summary['suppressed_exhaustion']:>9}")
+              f"{summary['suppressed_exhaustion']:>9} {summary['suppressed_standdown']:>9}")
     print(CAVEATS)
     if store_conn is not None:
         print(f"stored: {len(results)} runs under sweep_id={sweep_id} in backtest_runs/backtest_trades")
@@ -1113,6 +1247,11 @@ def main() -> None:
     ap.add_argument("--fisher4h-exit", action="store_true",
                     help="exit open sim positions when 4H Fisher crosses extended in trade's favor")
     ap.add_argument("--exhaustion-threshold", type=float, default=FISHER4H_EXHAUSTION_THRESHOLD)
+    ap.add_argument("--standdown-entry", action="store_true",
+                    help="suppress entries in the crowded direction when funding is at a "
+                         "trailing-30d percentile extreme (OI z conjunction when --oi-z-min set)")
+    ap.add_argument("--funding-pctile", type=float, default=85.0)
+    ap.add_argument("--oi-z-min", type=float, default=None)
     ap.add_argument("--fisher-tf", default=None,
                     help="counter_trend: series for the Fisher gate (must equal bias-tf or trigger-tf)")
     ap.add_argument("--obv-rule", default="divergence", choices=OBV_RULES)

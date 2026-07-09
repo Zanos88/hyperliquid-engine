@@ -92,3 +92,36 @@ def get_btc_sz_decimals(session: requests.Session | None = None) -> int:
         if asset.get("name") == "BTC":
             return int(asset["szDecimals"])
     raise LookupError("BTC not found in Hyperliquid perpetuals meta universe")
+
+
+def fetch_funding_history(
+    coin: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    session: requests.Session | None = None,
+    timeout: float = 10.0,
+) -> list[tuple[int, float]]:
+    """Full hourly funding-rate history as (time_ms, rate) tuples, oldest first.
+
+    The endpoint caps responses at 500 rows, so this is the repo's first
+    paginated fetch: advance startTime past the last returned row until a
+    short page or end_time_ms is reached. BTC history begins 2023-05-12
+    (verified 2026-07-09, OI_LIQUIDATION_PHASE0_PHASE1.md §0.1).
+    """
+    http = session or requests.Session()
+    out: list[tuple[int, float]] = []
+    cursor = start_time_ms
+    while cursor <= end_time_ms:
+        body = {"type": "fundingHistory", "coin": coin,
+                "startTime": cursor, "endTime": end_time_ms}
+        resp = http.post(HYPERLIQUID_INFO_URL, json=body, timeout=timeout)
+        resp.raise_for_status()
+        page = resp.json()
+        if not page:
+            break
+        out.extend((int(r["time"]), float(r["fundingRate"])) for r in page)
+        if len(page) < 500:
+            break
+        cursor = int(page[-1]["time"]) + 1
+    out.sort(key=lambda t: t[0])
+    return [t for t in out if t[0] <= end_time_ms]

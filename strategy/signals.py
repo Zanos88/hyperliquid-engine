@@ -265,6 +265,26 @@ def evaluate_confluence(
     return None, readings, bias_result
 
 
+def standdown_suppresses(direction, funding_pctile: float, threshold: float,
+                         oi_z: float | None = None, oi_z_min: float | None = None) -> bool:
+    """Trend-exhaustion stand-down (OI×liquidation research §2.3c, BACKTEST-
+    ONLY): a trend running on funding-extreme, OI-maxed leverage is crowded,
+    not conviction. Suppress entries only in the CROWDED direction — longs
+    when funding is at the top of its trailing distribution, shorts at the
+    bottom. When oi_z_min is set the condition is a conjunction with the OI
+    z-score; when unset (OI data unavailable, Phase 0 §0.2) funding alone
+    decides. Pure so it can be unit-tested directly."""
+    crowded = (funding_pctile >= threshold if direction == SignalDirection.LONG
+               else funding_pctile <= 100.0 - threshold)
+    if not crowded:
+        return False
+    if oi_z_min is not None:
+        if oi_z is None:
+            raise ValueError("oi_z_min set but oi_z_value missing")
+        return oi_z >= oi_z_min
+    return True
+
+
 def evaluate_signal(
     candles_4h: Sequence[Candle],
     candles_1h: Sequence[Candle],
@@ -279,6 +299,11 @@ def evaluate_signal(
     fisher4h_entry_filter: bool = False,
     fisher4h_value: float | None = None,
     exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
+    standdown_entry_filter: bool = False,
+    funding_pctile_value: float | None = None,
+    funding_pctile_threshold: float = 85.0,
+    oi_z_value: float | None = None,
+    oi_z_min: float | None = None,
 ):
     """Full confluence + exit + R:R gate.
 
@@ -360,6 +385,20 @@ def evaluate_signal(
                 f"4H Fisher {fisher4h_value:+.2f} already extended beyond "
                 f"+/-{exhaustion_threshold} in {direction.value} direction — not chasing",
                 kind="fisher4h_exhaustion",
+            ))
+
+    if standdown_entry_filter:
+        if funding_pctile_value is None:
+            raise ValueError("standdown_entry_filter requires funding_pctile_value from the caller")
+        if standdown_suppresses(direction, funding_pctile_value, funding_pctile_threshold,
+                                oi_z_value, oi_z_min):
+            return _ret(SuppressedSignal(
+                direction, rr,
+                f"exhaustion stand-down: funding pctile {funding_pctile_value:.0f} "
+                f"crowded toward {direction.value}"
+                + (f", OI z {oi_z_value:+.2f} >= {oi_z_min}" if oi_z_min is not None else "")
+                + " — trend living on borrowed leverage, no fresh entry",
+                kind="exhaustion_standdown",
             ))
 
     active = [f"{name}:{r['vote']}" for name, r in readings.items() if r["enabled"]]

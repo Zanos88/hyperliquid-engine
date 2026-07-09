@@ -1,0 +1,18 @@
+# Grid D — trend-exhaustion stand-down gate (OI×liquidation research Phase 1).
+# Pre-registered in docs/OI_LIQUIDATION_PHASE0_PHASE1.md. Funding-only pass:
+# OI history is requester-pays-gated (Phase 0 §0.2), so the oi_z conjunction
+# variants run later when a source is unlocked. Baselines (standdown off)
+# must reproduce the stored V2.3 Grid C cells for the same configs.
+sweep_name: grid_d_standdown_funding_only
+grids:
+  - name: grid_d
+    tf_pairs:
+      - {bias: "4h", trigger: "1h"}
+      - {bias: "1d", trigger: "4h"}
+    indicator_sets: ["default"]
+    stop_models:
+      - {model: "structural"}
+    target_models: ["fib_extension_preferred"]
+    standdown:
+      - {entry: false}
+      - {entry: true, funding_pctiles: [85, 90]}
