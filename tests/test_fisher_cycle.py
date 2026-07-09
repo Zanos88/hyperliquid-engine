@@ -55,3 +55,48 @@ def test_custom_params_forwarded(monkeypatch):
 def test_thin_history_is_neutral_real():
     # real compute_bias, too few candles for a confirmed swing -> NEUTRAL
     assert daily_bias_at([daily(i, 60_000) for i in range(3)], 100 * DAY) == Bias.NEUTRAL
+
+
+# ── Part 2: state-machine decision helpers ──
+
+from strategy.fisher_cycle import (  # noqa: E402
+    is_exhausted,
+    leg_stop,
+    macro_broken,
+    opening_direction,
+)
+
+
+def test_opening_direction_pullback_entries():
+    # bullish bias + Fisher oversold -> buy the dip (LONG); mirror bearish
+    assert opening_direction(Bias.BULLISH, -2.5, 2.0) == "LONG"
+    assert opening_direction(Bias.BEARISH, 2.5, 2.0) == "SHORT"
+    # not extended enough -> no entry
+    assert opening_direction(Bias.BULLISH, -1.9, 2.0) is None
+    assert opening_direction(Bias.BEARISH, 1.9, 2.0) is None
+    # a short is NEVER opened fresh in a bullish bias (only via flip)
+    assert opening_direction(Bias.BULLISH, 2.5, 2.0) is None
+    assert opening_direction(Bias.BEARISH, -2.5, 2.0) is None
+    assert opening_direction(Bias.NEUTRAL, -2.5, 2.0) is None
+
+
+def test_is_exhausted_flip_condition():
+    # long banks at Fisher +2 (favorable exhaustion); short at -2
+    assert is_exhausted("LONG", 2.0, 2.0) is True
+    assert is_exhausted("LONG", 1.99, 2.0) is False
+    assert is_exhausted("SHORT", -2.0, 2.0) is True
+    assert is_exhausted("SHORT", -1.99, 2.0) is False
+    # a long is not exhausted by an oversold reading (that's its entry zone)
+    assert is_exhausted("LONG", -3.0, 2.0) is False
+
+
+def test_macro_broken():
+    assert macro_broken(Bias.BULLISH, Bias.BEARISH) is True
+    assert macro_broken(Bias.BULLISH, Bias.NEUTRAL) is True     # flip to neutral flattens
+    assert macro_broken(Bias.BULLISH, Bias.BULLISH) is False
+
+
+def test_leg_stop_atr_offset_both_directions():
+    assert leg_stop("LONG", 100.0, 2.0, atr_mult=1.5) == 97.0   # entry - mult*ATR
+    assert leg_stop("SHORT", 100.0, 2.0, atr_mult=1.5) == 103.0  # entry + mult*ATR
+    assert leg_stop("LONG", 100.0, 2.0, atr_mult=1.0) == 98.0
