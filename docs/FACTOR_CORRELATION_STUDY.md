@@ -31,8 +31,8 @@ test. It is fully independent of all of those.
 
 The constants block at the top of `scripts/factor_correlation_study.py` is
 the operative pre-registration; this section restates it. Pre-registration
-commit: `PREREG_COMMIT_HASH` (script + this section committed before
-`--phase explore` first ran).
+commit: `0f21aac` (script + this section committed before `--phase explore`
+first ran).
 
 ### 2.1 Factor definitions (per closed bar i, per timeframe series)
 
