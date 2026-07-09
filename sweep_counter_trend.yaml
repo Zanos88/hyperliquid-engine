@@ -1,0 +1,19 @@
+# Track 2 counter-trend sweep (E2E Ichimoku mean-reversion, backtest-only).
+# Dispatched by `strategy: counter_trend` (backtest.py --sweep reads this
+# key and routes to run_counter_trend_sweep, separate from the trend
+# grids). Fixed 4h-bias / 1h-trigger: 4h feeds structural S/R + fractal
+# swings, 1h carries the E2E cloud/TK/OBV pattern — the same split the
+# live system uses, so counter-trend rows sit alongside the trend runs
+# in backtest_runs (strategy_type='counter_trend') for direct comparison.
+#
+# fisher_tf {1h, 4h} x obv_rule {divergence, lrs_flattening} x
+# exhaustion_threshold {1.5, 2.0, 2.5} = 12 runs. fisher_tf is a real
+# open question (the E2E pattern is 1h; the original exhaustion insight
+# was 4h) — swept, not assumed. 2.0 is Zane's stated level; 1.5/2.5
+# bracket it.
+strategy: counter_trend
+sweep_name: track2_counter_trend
+tf_pair: {bias: 4h, trigger: 1h}
+fisher_tfs: [1h, 4h]
+obv_rules: [divergence, lrs_flattening]
+exhaustion_thresholds: [1.5, 2.0, 2.5]

@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS backtest_trades (
 );
 CREATE INDEX IF NOT EXISTS idx_backtest_trades_run ON backtest_trades (run_id);
 
+-- Track 2 (idempotent): which strategy produced a backtest run, so the
+-- trend system and the counter-trend module are directly comparable in
+-- one table. Existing runs default to 'trend'; counter-trend runs tag
+-- 'counter_trend'.
+ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS strategy_type TEXT
+    NOT NULL DEFAULT 'trend'
+    CHECK (strategy_type IN ('trend', 'counter_trend'));
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard

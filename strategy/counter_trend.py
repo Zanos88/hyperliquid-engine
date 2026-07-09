@@ -36,6 +36,7 @@ DEFAULT_EXHAUSTION_THRESHOLD = 2.0
 DEFAULT_ATR_MULTIPLIER = 1.5
 DEFAULT_OBV_LOOKBACK = 14
 DEFAULT_SUPPORT_PROXIMITY_ATR = 3.0   # entry must be within N*ATR of the reversal level
+DEFAULT_CROSS_LOOKBACK = 6            # TK cross must have printed within this many bars ("precedes")
 OBV_RULES = ("divergence", "lrs_flattening")
 
 
@@ -135,27 +136,39 @@ def opposite_cloud_edge(candles_trigger: Sequence[Candle], is_long: bool,
 def evaluate_counter_trend(
     candles_bias: Sequence[Candle],
     candles_trigger: Sequence[Candle],
-    fisher_value: float,
+    fisher_recent_min: float,
+    fisher_recent_max: float,
     variant: str = "standard",
     exhaustion_threshold: float = DEFAULT_EXHAUSTION_THRESHOLD,
     obv_rule: str = "divergence",
     atr_multiplier: float = DEFAULT_ATR_MULTIPLIER,
     obv_lookback: int = DEFAULT_OBV_LOOKBACK,
     support_proximity_atr: float = DEFAULT_SUPPORT_PROXIMITY_ATR,
+    cross_lookback: int = DEFAULT_CROSS_LOOKBACK,
     fractal_width: int = 2,
     sr_lookback: int = 20,
 ) -> CounterTrendSignal | None:
-    """Return a CounterTrendSignal or None. `fisher_value` is the Fisher
-    reading on the caller's chosen fisher_tf (sweep axis) — the module
-    stays agnostic to which timeframe produced it."""
+    """Return a CounterTrendSignal or None.
+
+    Both the TK cross AND the Fisher exhaustion PRECEDE the entry — that
+    is the whole mean-reversion thesis. The down-move exhausts (Fisher
+    hits its extreme at the low), THEN price reverses and reclaims the
+    cloud (the entry). So the caller supplies the recent-window extremes
+    of Fisher on the chosen fisher_tf (sweep axis) — fisher_recent_min /
+    fisher_recent_max over the setup window — not the entry-bar value.
+    (Gating on the entry-bar Fisher fired on 0 bars: by the time price
+    closes back inside the Kumo the oversold extreme has already passed.)
+    Likewise the TK cross must have printed within the last
+    `cross_lookback` bars while price was on the far side of the cloud;
+    the entry confirms on the current candle closing INSIDE the Kumo."""
     if obv_rule not in OBV_RULES:
         raise ValueError(f"unknown obv_rule {obv_rule!r} — allowed: {OBV_RULES}")
-    if len(candles_trigger) < 2:
+    if len(candles_trigger) <= cross_lookback:
         return None
 
     tenkan, kijun, cloud_top, cloud_bottom = ichimoku_components(candles_trigger, variant=variant)
-    p_tenkan, p_kijun, p_cloud_top, p_cloud_bottom = ichimoku_components(
-        candles_trigger[:-1], variant=variant)
+    past = candles_trigger[:-cross_lookback]
+    p_tenkan, p_kijun, p_cloud_top, p_cloud_bottom = ichimoku_components(past, variant=variant)
     if None in (tenkan, kijun, cloud_top, cloud_bottom,
                 p_tenkan, p_kijun, p_cloud_top, p_cloud_bottom):
         return None
@@ -165,7 +178,7 @@ def evaluate_counter_trend(
         return None
 
     close = candles_trigger[-1].close
-    prev_close = candles_trigger[-2].close
+    past_close = past[-1].close   # close cross_lookback bars ago (when the cross printed)
     close_inside_kumo = cloud_bottom <= close <= cloud_top
 
     obv = on_balance_volume(candles_trigger)
@@ -173,11 +186,11 @@ def evaluate_counter_trend(
     swings = detect_swings(candles_bias, fractal_width=fractal_width)
     sr_levels = horizontal_sr(swings, lookback=sr_lookback)
 
-    # ---- LONG: was below the cloud, TK crosses up, closes back inside ----
+    # ---- LONG: TK crossed up recently while below the cloud, now closes back inside ----
     bullish_cross = p_tenkan <= p_kijun and tenkan > kijun
-    was_below = prev_close < p_cloud_bottom
+    was_below = past_close < p_cloud_bottom
     if (bullish_cross and was_below and close_inside_kumo
-            and fisher_value <= -exhaustion_threshold
+            and fisher_recent_min <= -exhaustion_threshold
             and _obv_confluence(obv, closes, obv_lookback, True, obv_rule)):
         support = _nearest_support_below(sr_levels, close)
         swing_low = _nearest_swing_low_below(swings, close)
@@ -189,18 +202,18 @@ def evaluate_counter_trend(
             if risk > 0 and target > close:
                 return CounterTrendSignal(
                     direction="LONG", entry=close, stop=stop, target_at_entry=target,
-                    reward_risk=(target - close) / risk, fisher_value=fisher_value,
+                    reward_risk=(target - close) / risk, fisher_value=fisher_recent_min,
                     obv_rule=obv_rule,
-                    reason=(f"E2E long: TK cross up into Kumo from below, Fisher "
-                            f"{fisher_value:.2f} <= -{exhaustion_threshold}, OBV {obv_rule}, "
+                    reason=(f"E2E long: TK cross up into Kumo from below, Fisher reached "
+                            f"{fisher_recent_min:.2f} <= -{exhaustion_threshold}, OBV {obv_rule}, "
                             f"at support {support:.2f}"),
                 )
 
-    # ---- SHORT: was above the cloud, TK crosses down, closes back inside ----
+    # ---- SHORT: TK crossed down recently while above the cloud, now closes back inside ----
     bearish_cross = p_tenkan >= p_kijun and tenkan < kijun
-    was_above = prev_close > p_cloud_top
+    was_above = past_close > p_cloud_top
     if (bearish_cross and was_above and close_inside_kumo
-            and fisher_value >= exhaustion_threshold
+            and fisher_recent_max >= exhaustion_threshold
             and _obv_confluence(obv, closes, obv_lookback, False, obv_rule)):
         resistance = _nearest_resistance_above(sr_levels, close)
         swing_high = _nearest_swing_high_above(swings, close)
@@ -212,10 +225,10 @@ def evaluate_counter_trend(
             if risk > 0 and target < close:
                 return CounterTrendSignal(
                     direction="SHORT", entry=close, stop=stop, target_at_entry=target,
-                    reward_risk=(close - target) / risk, fisher_value=fisher_value,
+                    reward_risk=(close - target) / risk, fisher_value=fisher_recent_max,
                     obv_rule=obv_rule,
-                    reason=(f"E2E short: TK cross down into Kumo from above, Fisher "
-                            f"{fisher_value:.2f} >= {exhaustion_threshold}, OBV {obv_rule}, "
+                    reason=(f"E2E short: TK cross down into Kumo from above, Fisher reached "
+                            f"{fisher_recent_max:.2f} >= {exhaustion_threshold}, OBV {obv_rule}, "
                             f"at resistance {resistance:.2f}"),
                 )
 

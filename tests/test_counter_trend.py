@@ -92,7 +92,8 @@ def long_candles(last_close=105.0, prev_close=95.0):
 
 def test_valid_long_fires_with_expected_geometry(monkeypatch):
     install_long(monkeypatch)
-    sig = evaluate_counter_trend(series([100] * 200), long_candles(), fisher_value=-2.5)
+    sig = evaluate_counter_trend(series([100] * 200), long_candles(), fisher_recent_min=-2.5, fisher_recent_max=0.0,
+                                 cross_lookback=1)
     assert isinstance(sig, CounterTrendSignal)
     assert sig.direction == "LONG"
     assert sig.entry == 105.0
@@ -105,40 +106,40 @@ def test_close_must_be_inside_kumo_wick_rejected(monkeypatch):
     install_long(monkeypatch)
     # candle pierced the cloud on the wick but CLOSED back above it (115 > cloud_top 110)
     sig = evaluate_counter_trend(series([100] * 200), long_candles(last_close=115.0),
-                                 fisher_value=-2.5)
+                                 fisher_recent_min=-2.5, fisher_recent_max=0.0, cross_lookback=1)
     assert sig is None
 
 
 def test_fisher_gate_blocks(monkeypatch):
     install_long(monkeypatch)
     assert evaluate_counter_trend(series([100] * 200), long_candles(),
-                                  fisher_value=-1.0) is None   # not extended enough
+                                  fisher_recent_min=-1.0, fisher_recent_max=0.0, cross_lookback=1) is None   # not extended enough
 
 
 def test_obv_gate_blocks(monkeypatch):
     install_long(monkeypatch, obv_pass=False)
     assert evaluate_counter_trend(series([100] * 200), long_candles(),
-                                  fisher_value=-2.5) is None
+                                  fisher_recent_min=-2.5, fisher_recent_max=0.0, cross_lookback=1) is None
 
 
 def test_requires_fresh_tk_cross(monkeypatch):
     # prior bar already had tenkan > kijun -> no fresh cross this bar
     install_long(monkeypatch, prev=(106.0, 104.0, 110.0, 100.0))
     assert evaluate_counter_trend(series([100] * 200), long_candles(),
-                                  fisher_value=-2.5) is None
+                                  fisher_recent_min=-2.5, fisher_recent_max=0.0, cross_lookback=1) is None
 
 
 def test_requires_prior_close_below_cloud(monkeypatch):
     install_long(monkeypatch)
     # prev_close 105 is NOT below the prior cloud bottom (100) -> setup invalid
     assert evaluate_counter_trend(series([100] * 200), long_candles(prev_close=105.0),
-                                  fisher_value=-2.5) is None
+                                  fisher_recent_min=-2.5, fisher_recent_max=0.0, cross_lookback=1) is None
 
 
 def test_support_proximity_required(monkeypatch):
     install_long(monkeypatch, support=80.0)    # 105-80=25 > 3*ATR(6) -> too far from support
     assert evaluate_counter_trend(series([100] * 200), long_candles(),
-                                  fisher_value=-2.5) is None
+                                  fisher_recent_min=-2.5, fisher_recent_max=0.0, cross_lookback=1) is None
 
 
 def test_short_mirror_fires(monkeypatch):
@@ -153,7 +154,8 @@ def test_short_mirror_fires(monkeypatch):
     monkeypatch.setattr(ct, "horizontal_sr", lambda s, lookback=20: [
         SRLevel(price=109.0, kind="resistance")])
     closes = [100.0] * (TRIG_LEN - 2) + [115.0, 105.0]      # prev above cloud, close back inside
-    sig = evaluate_counter_trend(series([100] * 200), series(closes), fisher_value=2.5)
+    sig = evaluate_counter_trend(series([100] * 200), series(closes), fisher_recent_min=0.0, fisher_recent_max=2.5,
+                                 cross_lookback=1)
     assert isinstance(sig, CounterTrendSignal) and sig.direction == "SHORT"
     assert sig.stop == pytest.approx(110.0 + 1.5 * 2.0)     # swing_high + mult*ATR = 113
     assert sig.target_at_entry == 100.0                     # lower cloud edge
@@ -162,5 +164,5 @@ def test_short_mirror_fires(monkeypatch):
 def test_unknown_obv_rule_rejected(monkeypatch):
     install_long(monkeypatch)
     with pytest.raises(ValueError):
-        evaluate_counter_trend(series([100] * 200), long_candles(), fisher_value=-2.5,
-                               obv_rule="moon_phase")
+        evaluate_counter_trend(series([100] * 200), long_candles(), fisher_recent_min=-2.5, fisher_recent_max=0.0,
+                               cross_lookback=1, obv_rule="moon_phase")
