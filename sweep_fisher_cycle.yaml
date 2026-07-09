@@ -1,0 +1,15 @@
+# Track 3 fisher-cycle sweep (1D bias + 4H Fisher pullback/exhaustion
+# cycling, backtest-only). Dispatched by `strategy: fisher_cycle`
+# (backtest.py --sweep routes to run_fisher_cycle_sweep). Fixed 1D-bias /
+# 4H-trigger (the hypothesis is specifically this pairing): 1D feeds the
+# structural bias, 4H carries the Fisher pullback/exhaustion cycle. Rows
+# tag strategy_type='fisher_cycle' alongside trend/counter_trend runs.
+#
+# exhaustion_threshold {1.5, 2.0, 2.5} x atr_multiplier {1.0, 1.5} = 6
+# runs. 2.0 is Zane's stated Fisher level; 1.5/2.5 bracket it. ATR mult
+# {1.0, 1.5} sizes the per-leg hard stop (the failure-mode cap).
+strategy: fisher_cycle
+sweep_name: track3_fisher_cycle
+tf_pair: {bias: 1d, trigger: 4h}
+exhaustion_thresholds: [1.5, 2.0, 2.5]
+atr_multipliers: [1.0, 1.5]

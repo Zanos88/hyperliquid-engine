@@ -224,6 +224,25 @@ ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS strategy_type TEXT
     NOT NULL DEFAULT 'trend'
     CHECK (strategy_type IN ('trend', 'counter_trend'));
 
+-- Track 3 (idempotent): widen the strategy_type CHECK to admit
+-- 'fisher_cycle'. The original inline CHECK above is auto-named by
+-- Postgres; drop whatever CHECK references strategy_type by lookup (name-
+-- agnostic) then re-add the widened, explicitly-named constraint. Safe to
+-- re-run: the second pass finds and drops backtest_runs_strategy_type_chk
+-- and re-adds it identically.
+DO $$
+DECLARE c text;
+BEGIN
+    SELECT conname INTO c FROM pg_constraint
+     WHERE conrelid = 'backtest_runs'::regclass AND contype = 'c'
+       AND pg_get_constraintdef(oid) LIKE '%strategy_type%';
+    IF c IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE backtest_runs DROP CONSTRAINT %I', c);
+    END IF;
+END $$;
+ALTER TABLE backtest_runs ADD CONSTRAINT backtest_runs_strategy_type_chk
+    CHECK (strategy_type IN ('trend', 'counter_trend', 'fisher_cycle'));
+
 -- ── Floor guard: the LAST line of defense (build report section 6.3) ──
 -- BEFORE INSERT on order intents. Blocks ENTRY intents whose worst case
 -- (stop-out at risk_stop_price) crosses the binding floor + $200 hard
