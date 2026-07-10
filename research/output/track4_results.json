@@ -1,0 +1,250 @@
+{
+ "ran_at_utc": "2026-07-10T06:48:59+00:00",
+ "entry_condition_bar_counts": {
+  "|F| >= 2.0": 8,
+  "|F| >= 3.0": 0
+ },
+ "grid_runs": 24,
+ "results": [
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "1d",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 2.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 30,
+   "thr": 3.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 2.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": null,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": 14,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  },
+  {
+   "bias_tf": "12h",
+   "sma": 50,
+   "thr": 3.0,
+   "cap_days": 30,
+   "summary": {
+    "trades": 0
+   },
+   "trades": []
+  }
+ ]
+}
