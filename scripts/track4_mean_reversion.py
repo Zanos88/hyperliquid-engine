@@ -73,7 +73,9 @@ def bias_direction_series(bias_candles: list[Candle], window: int) -> tuple[list
     return dirs, [c.close_time_ms for c in bias_candles]
 
 
-def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days) -> list[dict]:
+def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
+               long_only: bool = False, exit_mode: str = "first_profit",
+               atr_series=None, tp_atr_mult: float = 1.0) -> list[dict]:
     cap_bars = cap_days * BARS_PER_DAY_4H if cap_days else None
     trades: list[dict] = []
     open_t: dict | None = None
@@ -92,7 +94,13 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days) -> l
             held = i - open_t["entry_i"]
             ret = (c.close / e - 1) if side == "LONG" else (e - c.close) / e
             net = ret - 2 * FEE
-            rev_hit = net > 0
+            if exit_mode == "atr_tp":
+                # Harvest the bounce: exit at entry +/- tp_atr_mult x ATR(entry),
+                # not the first profitable tick.
+                tp_dist = tp_atr_mult * open_t["atr_at_entry"] / e
+                rev_hit = ret >= tp_dist
+            else:
+                rev_hit = net > 0
             fis_hit = (fisher[i] >= REVERSAL_EXIT_LEVEL) if side == "LONG" \
                 else (fisher[i] <= -REVERSAL_EXIT_LEVEL)
             cap_hit = cap_bars is not None and held >= cap_bars
@@ -114,12 +122,13 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days) -> l
         side = None
         if f <= -thr and b == 1:
             side = "LONG"
-        elif f >= thr and b == -1:
+        elif f >= thr and b == -1 and not long_only:
             side = "SHORT"
         if side:
             open_t = {"side": side, "entry_i": i, "entry": c.close,
                       "entry_ts": _ms_to_utc(c.close_time_ms),
-                      "fisher_at_entry": round(f, 2), "mae": 0.0}
+                      "fisher_at_entry": round(f, 2), "mae": 0.0,
+                      "atr_at_entry": (atr_series[i] if atr_series else 0.0)}
     if open_t is not None:
         c = candles_4h[-1]
         e = open_t["entry"]
@@ -161,9 +170,14 @@ def summarize(trades: list[dict]) -> dict:
     }
 
 
-def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "") -> None:
+def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
+              bias_tfs: tuple[str, ...] = BIAS_TFS,
+              exit_modes: tuple[str, ...] = ("first_profit",),
+              caps: tuple = HOLD_CAPS_DAYS, long_only: bool = False) -> None:
+    from strategy.atr import wilder_atr
     candles_4h, _ = load_snapshot("4h")
     fisher = fisher_transform(candles_4h)[0]
+    atr = wilder_atr(candles_4h)
     # Guard: refuse to run on the buggy Fisher (saturated distribution).
     share_ge2 = sum(1 for v in fisher[20:] if abs(v) >= 2) / (len(fisher) - 20)
     if share_ge2 > 0.05:
@@ -175,30 +189,36 @@ def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "") -
           f"{_ms_to_utc(candles_4h[-1].close_time_ms)}); entry-condition bar counts: {freq}")
 
     bias = {}
-    for tf in BIAS_TFS:
+    for tf in bias_tfs:
         bc, _ = load_snapshot(tf)
         for w in SMA_WINDOWS:
             bias[(tf, w)] = bias_direction_series(bc, w)
 
     results = []
-    for tf in BIAS_TFS:
+    for tf in bias_tfs:
         for w in SMA_WINDOWS:
             dirs, times = bias[(tf, w)]
             for thr in thresholds:
-                for cap in HOLD_CAPS_DAYS:
-                    trades = run_config(candles_4h, fisher, dirs, times, thr, cap)
-                    s = summarize(trades)
-                    results.append({"bias_tf": tf, "sma": w, "thr": thr,
-                                    "cap_days": cap, "summary": s, "trades": trades})
-                    cap_s = f"{cap}d" if cap else "none"
-                    if s["trades"]:
-                        print(f"{tf}/SMA{w} thr={thr} cap={cap_s:>4}: trades {s['trades']} "
-                              f"wins {s['wins']} | pos P&L {s['sum_net_pct_position']:+.2f}% "
-                              f"| cap@10% {s['capital_pnl_pct']['10%']:+.2f}% "
-                              f"| worstMAE(pos) {s['worst_mae_pct_position']:+.2f}% "
-                              f"| exits {s['exit_reasons']}")
-                    else:
-                        print(f"{tf}/SMA{w} thr={thr} cap={cap_s:>4}: trades 0")
+                for cap in caps:
+                    for em in exit_modes:
+                        trades = run_config(candles_4h, fisher, dirs, times, thr, cap,
+                                            long_only=long_only, exit_mode=em,
+                                            atr_series=atr)
+                        s = summarize(trades)
+                        results.append({"bias_tf": tf, "sma": w, "thr": thr,
+                                        "cap_days": cap, "exit_mode": em,
+                                        "long_only": long_only,
+                                        "summary": s, "trades": trades})
+                        cap_s = f"{cap}d" if cap else "none"
+                        if s["trades"]:
+                            print(f"{tf}/SMA{w} thr={thr} cap={cap_s:>4} {em:>12}: "
+                                  f"trades {s['trades']:3d} wins {s['wins']:3d} "
+                                  f"| pos P&L {s['sum_net_pct_position']:+8.2f}% "
+                                  f"| cap@10% {s['capital_pnl_pct']['10%']:+6.2f}% "
+                                  f"| worstMAE(pos) {s['worst_mae_pct_position']:+.2f}% "
+                                  f"| exits {s['exit_reasons']}")
+                        else:
+                            print(f"{tf}/SMA{w} thr={thr} cap={cap_s:>4} {em:>12}: trades 0")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUTPUT_DIR / (f"track4_results_{tag}.json" if tag else "track4_results.json")
     out.write_text(json.dumps(
@@ -248,12 +268,22 @@ def main() -> None:
                     help="entry |Fisher| thresholds, comma-separated (round 1: 2.0,3.0; "
                          "round 2 per Zane's clarified intent: 1.5)")
     ap.add_argument("--tag", default="", help="suffix for the output file (round provenance)")
+    ap.add_argument("--bias-tfs", default="1d,12h")
+    ap.add_argument("--exit-modes", default="first_profit",
+                    help="comma list of {first_profit, atr_tp}")
+    ap.add_argument("--caps", default="none,14,30", help="comma list of day caps; 'none' allowed")
+    ap.add_argument("--long-only", action="store_true",
+                    help="round-3 rule: mean reversion within an UP trend only")
     args = ap.parse_args()
     if args.phase == "selfcheck":
         phase_selfcheck()
     else:
         thresholds = tuple(float(t) for t in args.thresholds.split(","))
-        phase_run(thresholds, args.tag)
+        caps = tuple(None if c == "none" else int(c) for c in args.caps.split(","))
+        phase_run(thresholds, args.tag,
+                  bias_tfs=tuple(args.bias_tfs.split(",")),
+                  exit_modes=tuple(args.exit_modes.split(",")),
+                  caps=caps, long_only=args.long_only)
 
 
 if __name__ == "__main__":

@@ -162,13 +162,62 @@ exists to stop a dip that never bounces.
    plausible round 3 — flagged for fresh pre-registration, deliberately
    not run today.
 
+## Round 3 — long-only, 12H bias, volume + exit axes (Zane's rules, 2026-07-10)
+
+Rules: (1) **no shorts** — mean reversion within an UP trend only; (2) more
+trade volume, strategy on the 4H-trigger/12H-bias frame. Pre-registered
+axes, each mechanism-motivated: threshold {−1.0, −1.25, −1.5} (the volume
+lever), exit {first_profit, atr_tp = entry+1×ATR(4H)} (first-profit
+forfeits most of each bounce; the TP variant tests harvesting it), SMA
+{30, 50}, no caps (round-2 evidence), no stop (design). 12 configs.
+
+### Results (long-only, 12H bias, cap none, 2024-03 → 2026-07)
+
+| Thr | Exit | SMA30: n / P&L(pos) / worstMAE | SMA50: n / P&L(pos) / worstMAE |
+|---|---|---|---|
+| −1.0 | first_profit | 47 / **+12.23%** / −16.6% | 49 / **−48.75%** / **−34.2%** |
+| −1.0 | atr_tp | 33 / −9.79% / −27.5% | 33 / −34.59% / −34.2% |
+| **−1.25** | **first_profit** | **17 / +6.66% / −16.5%** | **18 / +7.64% / −16.5%** |
+| −1.25 | atr_tp | 15 / +10.73% / −16.5% | 17 / −1.16% / −26.0% |
+| −1.5 | first_profit | 6 / +4.50% / −3.7% | 9 / +7.31% / −3.7% |
+| −1.5 | atr_tp | 6 / +2.56% / −14.9% | 8 / −3.60% / −25.8% |
+
+### Findings (honest read)
+
+1. **The volume lever works but buys tail, and the −1.0 cell is a trap.**
+   21 trades/yr achieved — and the two bias windows disagree by **61
+   points** (+12.2% vs −48.8%). Shallow-dip entries fire into the starts
+   of real downlegs; whether you survive depends on how fast the SMA
+   flips DOWN. A cell whose twin config blows up is not a winner — it is
+   parameter roulette. Do not deploy anything at −1.0.
+2. **The robust region is −1.25 / first_profit:** positive on both SMA
+   windows (+6.7%/+7.6% of position, 17–18 trades all-win, ~7.5
+   trades/yr — 2.5× the −1.5 cadence), identical worst-MAE profile to
+   round 2 (−16.5%, the hostage class). ~+3%/yr on deployed notional;
+   at 10% capital sizing ≈ +0.3%/yr — still thin in capital terms.
+3. **ATR take-profit rejected by evidence** (worse in 3 of 4 direct
+   comparisons): waiting for the full bounce holds exposure long enough
+   for Fisher-reversal losses to realize. The quick first-profit escape
+   IS the strategy's working half.
+4. **Round-2 recheck:** most of round 2's volume and P&L was actually the
+   SHORT side (12h/SMA50 thr1.5: 31 trades combined → 9 long-only) —
+   rallies-within-downtrends reach +1.5 more often than dips-within-
+   uptrends reach −1.5 on this window. Long-only is cleaner but smaller.
+5. **No robust winner exists in this family on this data.** The honest
+   best is −1.25/first_profit — parameter-stable, all-win, hostage-prone,
+   ~7.5 trades/yr, thin. Sequential rounds on the same window (r1→r2→r3)
+   also accumulate selection risk: the only legitimate promotion path is
+   a paper forward test of the named cell, exactly like tsmom30's.
+
 ## Reproduce
 
 ```powershell
 python scripts/track4_mean_reversion.py --phase selfcheck
-python scripts/track4_mean_reversion.py --phase run                              # round 1 (thr 2.0/3.0)
-python scripts/track4_mean_reversion.py --phase run --thresholds 1.5 --tag r2_thr15   # round 2
+python scripts/track4_mean_reversion.py --phase run                                    # round 1 (thr 2.0/3.0)
+python scripts/track4_mean_reversion.py --phase run --thresholds 1.5 --tag r2_thr15    # round 2
+python scripts/track4_mean_reversion.py --phase run --long-only --bias-tfs 12h `
+  --thresholds 1.0,1.25,1.5 --exit-modes first_profit,atr_tp --caps none --tag r3_long # round 3
 ```
 
-Machine-readable: `research/output/track4_results.json` (round 1, 24
-configs), `research/output/track4_results_r2_thr15.json` (round 2, 12).
+Machine-readable: `research/output/track4_results.json` (round 1),
+`…_r2_thr15.json` (round 2), `…_r3_long.json` (round 3).
