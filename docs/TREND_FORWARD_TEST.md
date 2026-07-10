@@ -38,6 +38,8 @@ candle history each tick, so marks are reproducible and restarts are exact.
 - Telegram (live channel, existing bot): position flips post audibly,
   prefixed `[TREND-FWD paper]`; inception was silent; buy_hold never
   alerts. Expected flip cadence from the tournaments: ~2–4/month per track.
+  **Added 2026-07-10:** every scheduled tick also posts the `--report`
+  table as a SILENT message (≤3/day); flips remain the only audible posts.
 - Scheduling (local, per user decision — no new cloud infrastructure):
   Windows Task Scheduler task **`btc-trend-forward-tick`** runs
   `scripts/trend_forward_tick.cmd` (which calls

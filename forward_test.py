@@ -89,7 +89,9 @@ def insert_mark(conn, strategy: str, candle, position: int, net: float,
     return cur.rowcount == 1
 
 
-def tick(store: TelemetryStore, telegram: TelegramClient | None) -> None:
+def tick(store: TelemetryStore, telegram: TelegramClient | None) -> bool:
+    """Process any unmarked closed bars. Returns True when >=1 mark was
+    written (used by --loop to rate-limit the silent report)."""
     now_ms = int(time.time() * 1000)
     span = LOOKBACK_BARS * interval_seconds(TF) * 1000
     candles = fetch_candles(SYMBOL, TF, now_ms - span, now_ms)
@@ -97,6 +99,7 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> None:
         raise RuntimeError(f"only {len(candles)} candles fetched")
     conn = store._connect()
     inception_lines: list[str] = []
+    wrote = False
 
     for name, rule in STRATEGIES.items():
         pos = rule(candles)
@@ -109,6 +112,7 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> None:
             net = -FEE * p
             equity = START_EQUITY * math.exp(net)
             if insert_mark(conn, name, candles[j], p, net, equity, flipped=p != 0):
+                wrote = True
                 state = "LONG" if p else "FLAT"
                 inception_lines.append(f"{name}: {state} @ ${candles[j].close:,.0f}")
                 logger.info("inception %s %s equity=%.2f", name, state, equity)
@@ -128,6 +132,7 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> None:
             equity *= math.exp(net)
             flipped = delta != 0
             if insert_mark(conn, name, candles[j], pos[j - 1], net, equity, flipped):
+                wrote = True
                 if flipped and telegram is not None and name != "buy_hold":
                     pnl = (equity / START_EQUITY - 1) * 100
                     state = "LONG" if pos[j] else "FLAT"
@@ -147,10 +152,11 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> None:
             "\nProtocol: docs/TREND_FORWARD_TEST.md (review gate ≥180d & ≥10 flips).",
             silent=True,
         )
+    return wrote
 
 
-def report(store: TelemetryStore) -> None:
-    conn = store._connect()
+def report_text(conn) -> str | None:
+    """The --report table as plain text (also posted silently per tick)."""
     rows = conn.execute(
         "SELECT strategy, count(*), min(bar_close_utc), max(bar_close_utc), "
         "sum(CASE WHEN flipped THEN 1 ELSE 0 END) "
@@ -158,20 +164,38 @@ def report(store: TelemetryStore) -> None:
         (SYMBOL,),
     ).fetchall()
     if not rows:
-        print("no marks yet — run --once first")
-        return
-    print(f"{'strategy':10s} {'marks':>5s} {'flips':>5s} {'equity':>12s} {'net%':>8s} "
-          f"{'pos':>4s}  window")
+        return None
+    lines = [f"{'strategy':10s} {'marks':>5s} {'flips':>5s} {'equity':>12s} {'net%':>8s} "
+             f"{'pos':>4s}  window"]
     for strategy, n, first, last_ts, flips in rows:
         eq_row = conn.execute(
-            "SELECT equity, position FROM trend_forward_marks "
+            "SELECT equity, position, flipped FROM trend_forward_marks "
             "WHERE strategy = %s AND symbol = %s ORDER BY bar_open_time_ms DESC LIMIT 1",
             (strategy, SYMBOL),
         ).fetchone()
-        equity, position = float(eq_row[0]), eq_row[1]
+        equity, position, flipped = float(eq_row[0]), eq_row[1], eq_row[2]
+        # Display the CURRENT position (held from the last close onward).
+        # Normal marks store the position held INTO the bar, so a flip at
+        # that close means current = 1 - position; the inception row (n == 1)
+        # already stores the position held FROM inception.
+        current = position if n == 1 else ((1 - position) if flipped else position)
         net = (equity / START_EQUITY - 1) * 100
-        print(f"{strategy:10s} {n:5d} {flips:5d} {equity:12,.2f} {net:+7.2f}% "
-              f"{('LONG' if position else 'FLAT'):>4s}  {first:%Y-%m-%d} .. {last_ts:%Y-%m-%d}")
+        lines.append(f"{strategy:10s} {n:5d} {flips:5d} {equity:12,.2f} {net:+7.2f}% "
+                     f"{('LONG' if current else 'FLAT'):>4s}  {first:%Y-%m-%d} .. {last_ts:%Y-%m-%d}")
+    return "\n".join(lines)
+
+
+def report(store: TelemetryStore) -> None:
+    print(report_text(store._connect()) or "no marks yet — run --once first")
+
+
+def send_report(store: TelemetryStore, telegram: TelegramClient | None) -> None:
+    """Silent per-tick status post — flips remain the only audible messages."""
+    if telegram is None:
+        return
+    text = report_text(store._connect())
+    if text:
+        telegram.send(f"<b>{TAG} report</b>\n<pre>{text}</pre>", silent=True)
 
 
 def main() -> None:
@@ -199,11 +223,15 @@ def main() -> None:
     if args.once:
         tick(store, telegram)
         report(store)
+        send_report(store, telegram)  # every scheduled tick (<=3/day) posts silently
         return
     logger.info("resident loop, poll %ds", POLL_SECONDS)
     while True:
         try:
-            tick(store, telegram)
+            # Loop mode polls every 5 min; report only on ticks that wrote
+            # marks so a resident deployment can't emit 288 posts/day.
+            if tick(store, telegram):
+                send_report(store, telegram)
         except Exception:
             logger.warning("tick failed; retrying next poll", exc_info=True)
         time.sleep(POLL_SECONDS)
