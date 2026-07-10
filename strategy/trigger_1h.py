@@ -24,8 +24,19 @@ def fisher_transform(candles: Sequence[Candle], period: int = FISHER_PERIOD) -> 
 
     Ehlers' construction (RESEARCH_FINDINGS 3.2):
         raw = 2 * ((mid - min(period)) / (max(period) - min(period)) - 0.5)
-        x   = 0.33 * 2 * raw + 0.67 * x_prev        (EMA smoothing, alpha ~= 0.33)
+        x   = 0.33 * raw + 0.67 * x_prev            (EMA smoothing, alpha = 0.33;
+                                                     raw already spans [-1, +1] —
+                                                     Ehlers' ".33 * 2 * (ratio - .5)"
+                                                     doubles the HALF-range term once)
         fisher[t] = 0.5 * ln((1+x)/(1-x)) + 0.5 * fisher[t-1]
+
+    Fixed 2026-07-10: the original implementation applied the x2 twice
+    (0.33 * 2 * raw with raw already doubled), giving the smoothing
+    recursion a gain of 0.66 + 0.67 = 1.33 > 1 — an unstable filter that
+    pegged x at the +/-0.999 clamp during sustained moves and saturated
+    Fisher toward its recursive ceiling (~7.6). Live symptom: 1H Fisher
+    5.23 (2026-07-10 14:24 UTC) vs TradingView ~3.09. See
+    docs/FISHER_FIX_REVERIFICATION.md for the blast radius.
     """
     n = len(candles)
     fisher = [0.0] * n
@@ -41,7 +52,7 @@ def fisher_transform(candles: Sequence[Candle], period: int = FISHER_PERIOD) -> 
         lo = min(c.low for c in window)
         mid = (candles[i].high + candles[i].low) / 2
         raw = 0.0 if hi == lo else 2 * ((mid - lo) / (hi - lo) - 0.5)
-        x = 0.33 * 2 * raw + 0.67 * x_prev
+        x = 0.33 * raw + 0.67 * x_prev
         # Numerical-stability guard (standard, uncited — see RESEARCH_FINDINGS
         # 3.2 implementation note): ln((1+x)/(1-x)) is singular at x = +/-1,
         # so clamp to +/-0.999. Not a strategy parameter.

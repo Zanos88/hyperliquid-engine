@@ -155,13 +155,16 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> bool:
     return wrote
 
 
-def report_text(conn) -> str | None:
-    """The --report table as plain text (also posted silently per tick)."""
+def report_text(conn, symbol: str = SYMBOL) -> str | None:
+    """The --report table as plain text (also posted silently per tick).
+    Pure function of DB state — two calls on identical data must return
+    identical output (regression-tested after the 2026-07-10 report-position
+    confusion, which was a code change between calls, not nondeterminism)."""
     rows = conn.execute(
         "SELECT strategy, count(*), min(bar_close_utc), max(bar_close_utc), "
         "sum(CASE WHEN flipped THEN 1 ELSE 0 END) "
         "FROM trend_forward_marks WHERE symbol = %s GROUP BY strategy ORDER BY strategy",
-        (SYMBOL,),
+        (symbol,),
     ).fetchall()
     if not rows:
         return None
@@ -171,7 +174,7 @@ def report_text(conn) -> str | None:
         eq_row = conn.execute(
             "SELECT equity, position, flipped FROM trend_forward_marks "
             "WHERE strategy = %s AND symbol = %s ORDER BY bar_open_time_ms DESC LIMIT 1",
-            (strategy, SYMBOL),
+            (strategy, symbol),
         ).fetchone()
         equity, position, flipped = float(eq_row[0]), eq_row[1], eq_row[2]
         # Display the CURRENT position (held from the last close onward).
