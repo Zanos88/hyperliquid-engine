@@ -209,6 +209,45 @@ forfeits most of each bounce; the TP variant tests harvesting it), SMA
    also accumulate selection risk: the only legitimate promotion path is
    a paper forward test of the named cell, exactly like tsmom30's.
 
+## Round 4 — clean single-variable threshold sweep (2026-07-11)
+
+Per Zane's Round 4 brief: everything frozen except the 4H Fisher entry
+threshold. **Fixed:** long-only; 12H **SMA30** bias (the delegated pick —
+Round 3's better-behaved window at the widest threshold, where SMA50's
+−48.75% regime-lag blowup would swamp the per-threshold comparison; the
+SMA50 view stays documented in Round 3); first-profit exit (ATR-TP already
+rejected); no stop, no leverage, no hold cap; sizing = fixed % of initial
+capital, non-compounding, P&L primary in % of position notional with 5%/10%
+capital columns (identical to Rounds 2–3). Regression check: the three
+cells overlapping Round 3 reproduce it exactly.
+
+| Threshold | Trades | Total return (% notional) | Worst MAE | Median time-to-revert | p90 time-to-revert |
+|---|---|---|---|---|---|
+| −1.00 | 47 | +12.23% | −16.61% | 0.2d | 2.8d |
+| −1.25 | 17 | +6.66% | −16.53% | 0.5d | 2.7d |
+| −1.50 | 6 | +4.50% | −3.66% | 0.2d | 2.5d |
+| −1.75 | 2 | +1.40% | −3.36% | 0.2d | 2.0d |
+
+**The callout the round exists to answer:** yes — worst-case MAE improves
+meaningfully between −1.25 and −1.50 (−16.5% → −3.7%), and it is **not** an
+exit-type artifact (all four cells share the first-profit exit; Round 3's
+drop was already within first-profit cells). The per-trade data attributes
+the entire transition to **one identifiable episode**: the 2024-08-27 dip,
+entered at Fisher −1.15 (thr −1.0 cell) / −1.33 (thr −1.25 cell), which sat
+**−16.5/−16.6% underwater for 23.5 days** before a ~breakeven rescue
+(+0.15%/+0.25%) — it is also both cells' max time-to-revert. A −1.50
+threshold never qualifies for that episode, collapsing both the MAE and the
+hold-time tail (max 2.5d).
+
+**Honest caveat on reading −1.50 as "safe":** the tail difference is n=1
+episode placement, not a structural guarantee — Round 2 already showed a
+−15.3% MAE at ±1.5 (on the short side), and nothing prevents a future
+slow-bleed dip from bottoming just beyond −1.5 with the same hostage
+dynamics. The threshold trades frequency for episode-exclusion, linearly:
+−1.0 buys 47 trades and the whole tail; −1.75 buys near-dormancy (2
+trades) and a clean window. −1.25 vs −1.50 is a choice between +6.66% with
+a 23-day −16.5% hostage and +4.50% without it — on this window.
+
 ## Reproduce
 
 ```powershell
@@ -217,7 +256,10 @@ python scripts/track4_mean_reversion.py --phase run                             
 python scripts/track4_mean_reversion.py --phase run --thresholds 1.5 --tag r2_thr15    # round 2
 python scripts/track4_mean_reversion.py --phase run --long-only --bias-tfs 12h `
   --thresholds 1.0,1.25,1.5 --exit-modes first_profit,atr_tp --caps none --tag r3_long # round 3
+python scripts/track4_mean_reversion.py --phase run --long-only --bias-tfs 12h --sma-windows 30 `
+  --thresholds 1.0,1.25,1.5,1.75 --exit-modes first_profit --caps none --tag r4_sweep  # round 4
 ```
 
 Machine-readable: `research/output/track4_results.json` (round 1),
-`…_r2_thr15.json` (round 2), `…_r3_long.json` (round 3).
+`…_r2_thr15.json` (round 2), `…_r3_long.json` (round 3),
+`…_r4_sweep.json` (round 4).

@@ -173,7 +173,8 @@ def summarize(trades: list[dict]) -> dict:
 def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
               bias_tfs: tuple[str, ...] = BIAS_TFS,
               exit_modes: tuple[str, ...] = ("first_profit",),
-              caps: tuple = HOLD_CAPS_DAYS, long_only: bool = False) -> None:
+              caps: tuple = HOLD_CAPS_DAYS, long_only: bool = False,
+              sma_windows: tuple[int, ...] = SMA_WINDOWS) -> None:
     from strategy.atr import wilder_atr
     candles_4h, _ = load_snapshot("4h")
     fisher = fisher_transform(candles_4h)[0]
@@ -191,12 +192,12 @@ def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
     bias = {}
     for tf in bias_tfs:
         bc, _ = load_snapshot(tf)
-        for w in SMA_WINDOWS:
+        for w in sma_windows:
             bias[(tf, w)] = bias_direction_series(bc, w)
 
     results = []
     for tf in bias_tfs:
-        for w in SMA_WINDOWS:
+        for w in sma_windows:
             dirs, times = bias[(tf, w)]
             for thr in thresholds:
                 for cap in caps:
@@ -274,6 +275,8 @@ def main() -> None:
     ap.add_argument("--caps", default="none,14,30", help="comma list of day caps; 'none' allowed")
     ap.add_argument("--long-only", action="store_true",
                     help="round-3 rule: mean reversion within an UP trend only")
+    ap.add_argument("--sma-windows", default="30,50",
+                    help="comma list of bias SMA windows (round 4: single window)")
     args = ap.parse_args()
     if args.phase == "selfcheck":
         phase_selfcheck()
@@ -283,7 +286,8 @@ def main() -> None:
         phase_run(thresholds, args.tag,
                   bias_tfs=tuple(args.bias_tfs.split(",")),
                   exit_modes=tuple(args.exit_modes.split(",")),
-                  caps=caps, long_only=args.long_only)
+                  caps=caps, long_only=args.long_only,
+                  sma_windows=tuple(int(w) for w in args.sma_windows.split(",")))
 
 
 if __name__ == "__main__":
