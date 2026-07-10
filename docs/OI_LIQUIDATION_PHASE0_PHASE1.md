@@ -1,5 +1,7 @@
 # OI × Liquidation Confluence — Phase 0 (data reality) + Phase 1 (exhaustion stand-down gate)
 
+> **SUPERSEDED 2026-07-10:** results below were computed under the Fisher gain bug (fixed in 9da31ee - the recursion applied Ehlers' x2 twice, saturating the indicator). Corrected re-run results and the full blast-radius report: docs/FISHER_FIX_REVERIFICATION.md.
+
 Date: 2026-07-09. Status: Phase 0 **COMPLETE** (real numbers below); Phase 1
 protocol **pre-registered** in this doc + implemented; results appended after
 the single sweep run. Source: `oi-liquidation-confluence-validated.pdf`

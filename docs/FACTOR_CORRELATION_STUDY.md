@@ -1,5 +1,7 @@
 # Factor Correlation Study — Confluence Factors vs Forward Returns
 
+> **SUPERSEDED 2026-07-10:** results below were computed under the Fisher gain bug (fixed in 9da31ee - the recursion applied Ehlers' x2 twice, saturating the indicator). Corrected re-run results and the full blast-radius report: docs/FISHER_FIX_REVERIFICATION.md.
+
 Study date: 2026-07-09. Status: **RESEARCH ONLY — COMPLETE. Result: NULL
 (no candidate rule met the pre-registered criteria; the holdout was never
 run, by design).**

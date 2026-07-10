@@ -1,5 +1,7 @@
 # Factor Confirmatory Tests (Round 2) — "Washed-Out Dip Near Support"
 
+> **SUPERSEDED 2026-07-10:** results below were computed under the Fisher gain bug (fixed in 9da31ee - the recursion applied Ehlers' x2 twice, saturating the indicator). Corrected re-run results and the full blast-radius report: docs/FISHER_FIX_REVERIFICATION.md.
+
 Study date: 2026-07-09. Status: **RESEARCH ONLY — COMPLETE. Result: 0/3
 FAIL — every test's conditional mean was NEGATIVE; the hypothesis is
 falsified.** Follows docs/FACTOR_CORRELATION_STUDY.md (round 1, null result).

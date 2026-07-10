@@ -1,5 +1,7 @@
 # Track 2 — Ichimoku E2E Counter-Trend Module (experimental, standalone, backtest-only)
 
+> **SUPERSEDED 2026-07-10:** results below were computed under the Fisher gain bug (fixed in 9da31ee - the recursion applied Ehlers' x2 twice, saturating the indicator). Corrected re-run results and the full blast-radius report: docs/FISHER_FIX_REVERIFICATION.md.
+
 Build date: 2026-07-09. A SECOND, independent signal path
 (`strategy/counter_trend.py`) that does not import or modify the trend
 system (`strategy/signals.py`) and is never wired into the live/dry-run
