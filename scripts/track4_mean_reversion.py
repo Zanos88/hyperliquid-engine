@@ -161,7 +161,7 @@ def summarize(trades: list[dict]) -> dict:
     }
 
 
-def phase_run() -> None:
+def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "") -> None:
     candles_4h, _ = load_snapshot("4h")
     fisher = fisher_transform(candles_4h)[0]
     # Guard: refuse to run on the buggy Fisher (saturated distribution).
@@ -170,7 +170,7 @@ def phase_run() -> None:
         raise RuntimeError("Fisher distribution looks saturated — is the 9da31ee fix applied?")
     # Entry-condition frequency (the "why so few trades" table)
     freq = {f"|F| >= {t}": sum(1 for v in fisher[WARMUP_4H:] if abs(v) >= t)
-            for t in ENTRY_THRESHOLDS}
+            for t in thresholds}
     print(f"4H bars {len(candles_4h)} ({_ms_to_utc(candles_4h[0].close_time_ms)} .. "
           f"{_ms_to_utc(candles_4h[-1].close_time_ms)}); entry-condition bar counts: {freq}")
 
@@ -184,7 +184,7 @@ def phase_run() -> None:
     for tf in BIAS_TFS:
         for w in SMA_WINDOWS:
             dirs, times = bias[(tf, w)]
-            for thr in ENTRY_THRESHOLDS:
+            for thr in thresholds:
                 for cap in HOLD_CAPS_DAYS:
                     trades = run_config(candles_4h, fisher, dirs, times, thr, cap)
                     s = summarize(trades)
@@ -200,11 +200,12 @@ def phase_run() -> None:
                     else:
                         print(f"{tf}/SMA{w} thr={thr} cap={cap_s:>4}: trades 0")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(
+    out = OUTPUT_DIR / (f"track4_results_{tag}.json" if tag else "track4_results.json")
+    out.write_text(json.dumps(
         {"ran_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
          "entry_condition_bar_counts": freq, "grid_runs": len(results),
          "results": results}, indent=1), encoding="utf-8")
-    print(f"\nwritten: {OUT} ({len(results)} configs)")
+    print(f"\nwritten: {out} ({len(results)} configs)")
 
 
 def phase_selfcheck() -> None:
@@ -243,11 +244,16 @@ def phase_selfcheck() -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--phase", required=True, choices=("selfcheck", "run"))
+    ap.add_argument("--thresholds", default="2.0,3.0",
+                    help="entry |Fisher| thresholds, comma-separated (round 1: 2.0,3.0; "
+                         "round 2 per Zane's clarified intent: 1.5)")
+    ap.add_argument("--tag", default="", help="suffix for the output file (round provenance)")
     args = ap.parse_args()
     if args.phase == "selfcheck":
         phase_selfcheck()
     else:
-        phase_run()
+        thresholds = tuple(float(t) for t in args.thresholds.split(","))
+        phase_run(thresholds, args.tag)
 
 
 if __name__ == "__main__":

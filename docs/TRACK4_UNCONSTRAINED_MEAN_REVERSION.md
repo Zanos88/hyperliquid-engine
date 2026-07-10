@@ -96,11 +96,79 @@ never existed on this data.
    answer moot at n=0; (2) sizing — fixed % of initial capital,
    non-compounding, stated above, also moot at n=0.
 
+## Round 2 — threshold −1.5 (Zane's clarified intent, 2026-07-10)
+
+Zane's correction to round 1: *"Fisher extremes are indeed trend events and
+my intention was to trade the mean reversion within the trend. e.g. Trend
+is UP, sell off occurs on LTF (4hr) hitting fisher extreme > −1.5 where a
+long within the trend is made. Once that long returns profit, position is
+closed. Rinse and repeat."* Round 1's entry logic already implemented
+exactly this; the −2.0/−3.0 thresholds were the mismatch. His message is
+the pre-registration for the −1.5 run round 1 flagged. Same grid minus the
+threshold axis: **12 configs** (bias TF × SMA × cap), same exits, sizes as
+reporting columns. |F| ≥ 1.5 = 296 bars (6.0%).
+
+### Results (2024-03 → 2026-07, 2.28 years)
+
+| Config (cap=none) | Trades | W–L | P&L (% of position) | P&L (% capital @5% / @10%) | Worst MAE (position) | ttr med/p90/max (days) |
+|---|---|---|---|---|---|---|
+| 1D/SMA30 | 36 | 35–1 | +12.74% | +0.64% / +1.27% | −15.3% | 0.3 / 5.0 / 11.8 |
+| 1D/SMA50 | 34 | 33–1 | +11.56% | +0.58% / +1.16% | −15.3% | 0.3 / 3.8 / 11.8 |
+| 12H/SMA30 | 20 | 20–0 | +11.97% | +0.60% / +1.20% | −11.7% | 0.3 / 5.0 / 10.5 |
+| **12H/SMA50** | **31** | **31–0** | **+18.61%** | +0.93% / **+1.86%** | −11.7% | 0.3 / 5.0 / 10.5 |
+
+Hold caps: **14d made everything worse** (converts the deepest trade into a
+realized −12.50% time_cap loss and cuts 1D P&L from +12.74% to +9.11%);
+**30d is identical to no-cap** — on this window every capped-off trade
+would have reverted. Caps only destroyed value here.
+
+### Worst-case table (equal weight, per the brief)
+
+| Trade | Side | MAE (position) | Held | Outcome |
+|---|---|---|---|---|
+| 2024-07-14 | SHORT | **−15.3%** | 16.2d | **−8.82% realized** (fisher_reversal) — the one loss; erases ~25 average wins |
+| 2025-01-15 | SHORT | −13.2% | 11.8d | +0.04% (rescued at breakeven) |
+| 2025-09-30 | SHORT | −11.7% | 10.5d | +0.08% (rescued) |
+| 2025-03-02 | SHORT | −10.7% | 1.7d | +0.13% |
+| 2025-02-01 | LONG | −9.3% | 1.8d | +1.13% |
+
+At 10% sizing these MAEs are −0.9% to −1.5% of capital sitting unrealized;
+they scale linearly with size, and the tail is **unbounded** — no mechanism
+exists to stop a dip that never bounces.
+
+### Findings (honest read)
+
+1. **The mechanism works as described — on this window.** Dips within
+   trend reverted fast (median 0.3 days ≈ 2 bars; p90 ~5 days), the
+   rinse-and-repeat is real, and the best cell nets +18.6% of position
+   notional (~+8.2%/yr on deployed notional) with 31/31 wins.
+2. **Ignore the win rate — it is ~100% by construction** (exit only on
+   profit). The informative numbers are the MAE distribution and the
+   single realized loss: −8.82% (one trade) vs ~+0.35–0.6% per win. The
+   profit engine collects small bounces while periodically sitting 10–15%
+   underwater for up to two weeks hoping. Four to five trades per config
+   were hostages rescued at ~breakeven.
+3. **Sized survivably, it doesn't move the needle: <1%/yr of capital at
+   5–10% sizing.** Making it matter requires 50–100% sizing, at which
+   point one 2022-style non-bouncing leg — unbounded by design — is
+   account-ending. Expectancy was positive here because every 2024–26 dip
+   eventually bounced: that is a regime property, not a strategy property.
+4. **It is also not higher-frequency: 9–16 trades/yr**, same order as the
+   trend system. Raising frequency means −1.25 (727 bars) or 1H Fisher —
+   each a fresh pre-registration facing the same tail math.
+5. **Observation (post-hoc, NOT a result):** every deep-MAE trade but one
+   was a SHORT fading a rally; the long side (Zane's actual example)
+   behaved better (worst long MAE −9.3%). A long-only variant is a
+   plausible round 3 — flagged for fresh pre-registration, deliberately
+   not run today.
+
 ## Reproduce
 
 ```powershell
 python scripts/track4_mean_reversion.py --phase selfcheck
-python scripts/track4_mean_reversion.py --phase run
+python scripts/track4_mean_reversion.py --phase run                              # round 1 (thr 2.0/3.0)
+python scripts/track4_mean_reversion.py --phase run --thresholds 1.5 --tag r2_thr15   # round 2
 ```
 
-Machine-readable: `research/output/track4_results.json` (all 24 configs).
+Machine-readable: `research/output/track4_results.json` (round 1, 24
+configs), `research/output/track4_results_r2_thr15.json` (round 2, 12).
