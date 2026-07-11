@@ -75,7 +75,8 @@ def bias_direction_series(bias_candles: list[Candle], window: int) -> tuple[list
 
 def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
                long_only: bool = False, exit_mode: str = "first_profit",
-               atr_series=None, tp_atr_mult: float = 1.0) -> list[dict]:
+               atr_series=None, tp_atr_mult: float = 1.0,
+               stop_atr_mult: float | None = None) -> list[dict]:
     cap_bars = cap_days * BARS_PER_DAY_4H if cap_days else None
     trades: list[dict] = []
     open_t: dict | None = None
@@ -84,6 +85,21 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
         if open_t is not None:
             side = open_t["side"]
             e = open_t["entry"]
+            # Track 4-Comp: ATR stop, checked FIRST (program stop-first
+            # convention), filled AT the stop level. Long-only variant.
+            if stop_atr_mult is not None and side == "LONG":
+                lvl = open_t["stop_level"]
+                if c.low <= lvl:
+                    net = (lvl / e - 1) - 2 * FEE
+                    open_t["mae"] = min(open_t["mae"], lvl / e - 1)
+                    open_t.update(exit_i=i, exit_ts=_ms_to_utc(c.close_time_ms),
+                                  exit_px=lvl, net_pct=net * 100,
+                                  r_multiple=net / open_t["stop_dist_frac"],
+                                  bars_held=i - open_t["entry_i"],
+                                  exit_reason="stop")
+                    trades.append(open_t)
+                    open_t = None
+                    continue
             # track adverse excursion intra-hold (long: lows; short: highs)
             adverse = (c.low / e - 1) if side == "LONG" else (e / c.high - 1) * -1 * -1
             if side == "LONG":
@@ -112,6 +128,8 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
                 open_t.update(exit_i=i, exit_ts=_ms_to_utc(c.close_time_ms),
                               exit_px=c.close, net_pct=net * 100,
                               bars_held=held, exit_reason=reason)
+                if stop_atr_mult is not None and "stop_dist_frac" in open_t:
+                    open_t["r_multiple"] = net / open_t["stop_dist_frac"]
                 trades.append(open_t)
                 open_t = None
             continue
@@ -129,6 +147,11 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
                       "entry_ts": _ms_to_utc(c.close_time_ms),
                       "fisher_at_entry": round(f, 2), "mae": 0.0,
                       "atr_at_entry": (atr_series[i] if atr_series else 0.0)}
+            if stop_atr_mult is not None:
+                if not atr_series or atr_series[i] <= 0:
+                    raise ValueError("stop_atr_mult requires a valid ATR series")
+                open_t["stop_level"] = c.close - stop_atr_mult * atr_series[i]
+                open_t["stop_dist_frac"] = stop_atr_mult * atr_series[i] / c.close
     if open_t is not None:
         c = candles_4h[-1]
         e = open_t["entry"]
@@ -332,7 +355,8 @@ def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
               bias_tfs: tuple[str, ...] = BIAS_TFS,
               exit_modes: tuple[str, ...] = ("first_profit",),
               caps: tuple = HOLD_CAPS_DAYS, long_only: bool = False,
-              sma_windows: tuple[int, ...] = SMA_WINDOWS) -> None:
+              sma_windows: tuple[int, ...] = SMA_WINDOWS,
+              stop_atr_mult: float | None = None) -> None:
     from strategy.atr import wilder_atr
     candles_4h, _ = load_snapshot("4h")
     fisher = fisher_transform(candles_4h)[0]
@@ -362,7 +386,7 @@ def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
                     for em in exit_modes:
                         trades = run_config(candles_4h, fisher, dirs, times, thr, cap,
                                             long_only=long_only, exit_mode=em,
-                                            atr_series=atr)
+                                            atr_series=atr, stop_atr_mult=stop_atr_mult)
                         s = summarize(trades)
                         results.append({"bias_tf": tf, "sma": w, "thr": thr,
                                         "cap_days": cap, "exit_mode": em,
@@ -417,6 +441,20 @@ def phase_selfcheck() -> None:
     fisher_rev = [-2.5 if i == 61 else (1.6 if i == 70 else 0.0) for i in range(n)]
     trades3 = run_config(down, fisher_rev, [1] * n, [c.close_time_ms for c in down], 2.0, None)
     assert trades3 and trades3[0]["exit_reason"] == "fisher_reversal" and trades3[0]["net_pct"] < 0
+    # ── Track 4-Comp ATR stop ──
+    from strategy.atr import wilder_atr
+    fisher_stop = [-2.5 if i == 61 else 0.0 for i in range(n)]
+    atr_dn = wilder_atr(down)
+    t4c = run_config(down, fisher_stop, [1] * n, [c.close_time_ms for c in down],
+                     2.0, None, long_only=True, atr_series=atr_dn, stop_atr_mult=1.0)
+    assert t4c and t4c[0]["exit_reason"] == "stop", t4c
+    assert -2.0 < t4c[0]["r_multiple"] <= -1.0          # ~ -1R minus fees
+    assert abs(t4c[0]["exit_px"] - t4c[0]["stop_level"]) < 1e-9  # filled AT the stop
+    # stop=None path unchanged (regression: same series, no stop -> time runs on)
+    t4n = run_config(down, fisher_stop, [1] * n, [c.close_time_ms for c in down],
+                     2.0, None, long_only=True, atr_series=atr_dn)
+    assert t4n[0]["exit_reason"] != "stop"
+
     # ── Round 6 DCA triggers ──
     n2 = 200
     flatpx = [Candle(i * 100, i * 100 + 99, 100, 100.05, 99.95, 100, 0.0) for i in range(n2)]
@@ -473,6 +511,8 @@ def main() -> None:
                     help="round-3 rule: mean reversion within an UP trend only")
     ap.add_argument("--sma-windows", default="30,50",
                     help="comma list of bias SMA windows (round 4: single window)")
+    ap.add_argument("--stop-atr-mult", type=float, default=None,
+                    help="Track 4-Comp: ATR stop multiplier (None = no stop, unchanged)")
     args = ap.parse_args()
     if args.phase == "selfcheck":
         phase_selfcheck()
@@ -486,7 +526,8 @@ def main() -> None:
                   bias_tfs=tuple(args.bias_tfs.split(",")),
                   exit_modes=tuple(args.exit_modes.split(",")),
                   caps=caps, long_only=args.long_only,
-                  sma_windows=tuple(int(w) for w in args.sma_windows.split(",")))
+                  sma_windows=tuple(int(w) for w in args.sma_windows.split(",")),
+                  stop_atr_mult=args.stop_atr_mult)
 
 
 if __name__ == "__main__":
