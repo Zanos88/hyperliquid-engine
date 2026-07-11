@@ -22,8 +22,7 @@ from datetime import datetime
 from ledger.tracker import ClosedPosition
 from strategy.signals import Signal, SignalDirection
 
-STATIC_FLOOR_USD = 94_000.0
-DAILY_LOSS_LIMIT_USD = 3_000.0
+from risk.challenge import DEFAULT_CONFIG, daily_floor as _daily_floor, dd_floor as _dd_floor
 
 _TF_LABEL = {"bias_sr": "bias", "ichimoku": "bias", "fisher": "trigger",
              "obv": "trigger", "rsi": "trigger"}
@@ -32,19 +31,25 @@ _TF_LABEL = {"bias_sr": "bias", "ichimoku": "bias", "fisher": "trigger",
 def _floor_lines(context: dict) -> list[str]:
     """Survival cushion vs the two challenge kill-conditions (both prior
     attempts failed on the daily limit — this is THE number to watch):
-    daily = how much more can be lost TODAY before the -3% daily breach;
-    max-DD = how much more before the $94,000 static floor (challenge over).
+    daily = how much more can be lost TODAY before the daily breach;
+    max-DD = how much more before the tier's drawdown floor (challenge over).
+    Tier comes from context["challenge_cfg"]/["hwm"] (risk/challenge.py);
+    absent context falls back to the static default — never faked.
     """
     equity = context.get("equity")
     day_start = context.get("day_start_equity")
     if equity is None or day_start is None:
         return []
-    daily_floor = day_start - DAILY_LOSS_LIMIT_USD
-    daily_left = max(equity - daily_floor, 0.0)
-    dd_left = max(equity - STATIC_FLOOR_USD, 0.0)
+    cfg = context.get("challenge_cfg") or DEFAULT_CONFIG
+    hwm = context.get("hwm")
+    daily_limit = cfg.initial_balance * cfg.daily_loss_pct / 100.0
+    floor = _dd_floor(cfg, hwm)
+    daily_left = max(equity - _daily_floor(cfg, day_start), 0.0)
+    dd_left = max(equity - floor, 0.0)
     return [
-        f"🛡 <b>Loss buffers</b>: today ${daily_left:,.0f} of ${DAILY_LOSS_LIMIT_USD:,.0f} left before daily breach | "
-        f"${dd_left:,.0f} left before max-drawdown floor (${STATIC_FLOOR_USD:,.0f})"
+        f"🛡 <b>Loss buffers</b>: today ${daily_left:,.0f} of ${daily_limit:,.0f} left before daily breach | "
+        f"${dd_left:,.0f} left before max-drawdown floor (${floor:,.0f}"
+        + (", trailing" if cfg.drawdown_type == "trailing" else "") + ")"
     ]
 
 

@@ -257,6 +257,10 @@ ALTER TABLE backtest_runs ADD CONSTRAINT backtest_runs_strategy_type_chk
 CREATE OR REPLACE FUNCTION enforce_floor_guard() RETURNS TRIGGER AS $$
 DECLARE
     latest RECORD;
+    cfg RECORD;
+    hwm_val NUMERIC;
+    dd_base NUMERIC;
+    dd_floor NUMERIC;
     worst_case NUMERIC;
     floor_binding NUMERIC;
 BEGIN
@@ -279,7 +283,24 @@ BEGIN
             NEW.intent_id;
     END IF;
 
-    floor_binding := GREATEST(latest.day_start_equity - 3000, 94000);
+    -- Tier-parameterized floors (challenge_config + equity_hwm; static seed
+    -- reproduces the historical GREATEST(day_start - 3000, 94000) exactly).
+    -- Fail CLOSED when the config row is missing.
+    SELECT drawdown_type, max_drawdown_pct, daily_loss_pct, initial_balance
+        INTO cfg FROM challenge_config WHERE id = 1;
+    IF cfg IS NULL THEN
+        RAISE EXCEPTION 'floor guard: challenge_config missing — refusing entry intent % (fail closed)',
+            NEW.intent_id;
+    END IF;
+    SELECT hwm INTO hwm_val FROM equity_hwm WHERE id = 1;
+
+    dd_base := CASE WHEN cfg.drawdown_type = 'trailing'
+                    THEN GREATEST(COALESCE(hwm_val, cfg.initial_balance), cfg.initial_balance)
+                    ELSE cfg.initial_balance END;
+    dd_floor := dd_base * (1 - cfg.max_drawdown_pct / 100);
+    floor_binding := GREATEST(
+        latest.day_start_equity - cfg.initial_balance * cfg.daily_loss_pct / 100,
+        dd_floor);
     worst_case := latest.equity - ABS(NEW.risk_entry_price - NEW.risk_stop_price) * NEW.quantity;
 
     IF worst_case <= floor_binding + 200 THEN
@@ -318,3 +339,35 @@ CREATE TABLE IF NOT EXISTS trend_forward_marks (
 );
 CREATE INDEX IF NOT EXISTS idx_trend_forward_marks_strategy
     ON trend_forward_marks (strategy, bar_open_time_ms DESC);
+
+-- ── Challenge tier parameterization (docs/GOLD_2STEP_REPARAMETERIZATION.md) ──
+-- Single source of truth for account-level safety thresholds. Seeded with the
+-- CURRENT posture (static 6% @ initial 100k -> $94,000 floor; daily 3% of
+-- initial -> day_start - $3,000) so applying this schema changes NO behavior.
+-- Flipping to Gold 2-Step (trailing 8% / daily 5%) is an explicit, user-gated
+-- UPDATE at Step-4 sign-off — never part of a code deploy.
+CREATE TABLE IF NOT EXISTS challenge_config (
+    id INT PRIMARY KEY CHECK (id = 1),
+    drawdown_type TEXT NOT NULL CHECK (drawdown_type IN ('static', 'trailing')),
+    max_drawdown_pct NUMERIC NOT NULL CHECK (max_drawdown_pct > 0 AND max_drawdown_pct <= 20),
+    daily_loss_pct NUMERIC NOT NULL CHECK (daily_loss_pct > 0 AND daily_loss_pct <= 10),
+    initial_balance NUMERIC NOT NULL CHECK (initial_balance > 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT
+);
+INSERT INTO challenge_config (id, drawdown_type, max_drawdown_pct, daily_loss_pct,
+                              initial_balance, updated_by)
+    VALUES (1, 'static', 6, 3, 100000, 'schema-init')
+    ON CONFLICT (id) DO NOTHING;
+
+-- Persisted equity high-water mark: the trailing floor's base. Written ONLY
+-- via GREATEST (db/store.update_hwm) so it can never move down — restart-safe
+-- by living in Postgres, not process memory. Re-initialize from the real
+-- Propr account equity at challenge activation (no active attempt exists yet).
+CREATE TABLE IF NOT EXISTS equity_hwm (
+    id INT PRIMARY KEY CHECK (id = 1),
+    hwm NUMERIC NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO equity_hwm (id, hwm) VALUES (1, 100000)
+    ON CONFLICT (id) DO NOTHING;

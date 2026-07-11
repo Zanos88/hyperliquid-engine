@@ -56,6 +56,13 @@ class FakeStore:
         self.events = []
         self.params = {"risk_pct": 0.0075, "alpha": 1.5, "max_concurrent": 1}
 
+    def get_challenge_config(self):
+        from risk.challenge import DEFAULT_CONFIG
+        return DEFAULT_CONFIG
+
+    def get_hwm(self):
+        return 100_000.0
+
     def get_market_state(self):
         return self.market_state
 

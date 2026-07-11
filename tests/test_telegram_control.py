@@ -70,6 +70,13 @@ class FakeStore:
         self.params = {"risk_pct": 0.0075, "alpha": 1.5, "max_concurrent": 1}
         self.pending = {}
 
+    def get_challenge_config(self):
+        from risk.challenge import DEFAULT_CONFIG
+        return DEFAULT_CONFIG
+
+    def get_hwm(self):
+        return 100_000.0
+
     def get_engine_state(self):
         return self.state
 

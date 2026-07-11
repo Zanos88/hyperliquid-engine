@@ -26,10 +26,10 @@ from datetime import date, datetime, timezone
 
 logger = logging.getLogger("guardian")
 
+from risk.challenge import DEFAULT_CONFIG, ChallengeConfig, binding_floor as _binding_floor
+
 SOFT_BUFFER_USD = 500.0
 HARD_BUFFER_USD = 200.0
-DAILY_LOSS_LIMIT_USD = 3_000.0
-STATIC_FLOOR_USD = 94_000.0
 TELEMETRY_THROTTLE_SECONDS = 5.0
 RECONNECT_DELAY_SECONDS = 5.0
 
@@ -60,9 +60,22 @@ class Guardian:
     soft_halted: bool = False
     flattened: bool = False
     current_day: date | None = None
+    # Tier parameterization (risk/challenge.py): defaults reproduce the
+    # historical static floors exactly. `hwm` is the persisted high-water
+    # mark cache — refreshed from DB at boot, ratcheted locally per event,
+    # persisted (throttled with telemetry) so a trailing floor never
+    # depends on process memory.
+    challenge_cfg: ChallengeConfig = DEFAULT_CONFIG
+    hwm: float | None = None
 
     def binding_floor(self) -> float:
-        return max(self.day_start_equity - DAILY_LOSS_LIMIT_USD, STATIC_FLOOR_USD)
+        return _binding_floor(self.challenge_cfg, self.day_start_equity, self.hwm)
+
+    def observe_hwm(self, equity: float) -> None:
+        """Local monotonic ratchet; persistence happens with the telemetry
+        throttle in the run loop (store.update_hwm)."""
+        if self.hwm is None or equity > self.hwm:
+            self.hwm = equity
 
     def _notify(self, text: str) -> None:
         if self.telegram is not None:
@@ -167,10 +180,14 @@ async def run_ws_loop(guardian: Guardian, execution) -> None:
                     if equity is None:
                         continue
 
+                    guardian.observe_hwm(equity)
                     guardian.on_equity(equity)
 
                     now_ts = asyncio.get_event_loop().time()
                     if now_ts - last_telemetry >= TELEMETRY_THROTTLE_SECONDS:
+                        # Persist the HWM ratchet with the same throttle; the
+                        # DB GREATEST makes double-writes/no-ops harmless.
+                        guardian.hwm = guardian.store.update_hwm(equity)
                         guardian.store.record_telemetry(
                             equity=equity,
                             day_start_equity=guardian.day_start_equity,
@@ -209,9 +226,14 @@ def main() -> None:
         raise RuntimeError("cannot establish starting equity from Propr account — refusing to guard blind")
 
     guardian = Guardian(store=store, execution=execution, day_start_equity=equity,
-                        telegram=TelegramClient())
-    logger.info("guardian starting: day_start_equity=%.2f binding_floor=%.2f",
-                equity, guardian.binding_floor())
+                        telegram=TelegramClient(),
+                        challenge_cfg=store.get_challenge_config(),
+                        hwm=store.update_hwm(equity))
+    logger.info("guardian starting: day_start_equity=%.2f binding_floor=%.2f "
+                "(tier=%s dd=%.1f%% daily=%.1f%% hwm=%.2f)",
+                equity, guardian.binding_floor(), guardian.challenge_cfg.drawdown_type,
+                guardian.challenge_cfg.max_drawdown_pct,
+                guardian.challenge_cfg.daily_loss_pct, guardian.hwm)
     asyncio.run(run_ws_loop(guardian, execution))
 
 

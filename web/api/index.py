@@ -143,15 +143,29 @@ async def status(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse({"error": "database_unavailable"}, status_code=503)
 
-    out: dict = {"static_floor": 94_000.0, "daily_loss_limit": 3_000.0}
+    try:
+        cc = _query("""SELECT drawdown_type, max_drawdown_pct, daily_loss_pct,
+                              initial_balance FROM challenge_config WHERE id = 1""")
+        hw = _query("SELECT hwm FROM equity_hwm WHERE id = 1")
+        dd_type, dd_pct, dl_pct, init_bal = cc[0]
+        dd_pct, dl_pct, init_bal = float(dd_pct), float(dl_pct), float(init_bal)
+        hwm = float(hw[0][0]) if hw else init_bal
+    except Exception:  # pre-migration DB — fall back to the historical constants
+        dd_type, dd_pct, dl_pct, init_bal, hwm = "static", 6.0, 3.0, 100_000.0, 100_000.0
+    dd_base = max(hwm, init_bal) if dd_type == "trailing" else init_bal
+    dd_floor_usd = dd_base * (1 - dd_pct / 100)
+    daily_limit_usd = init_bal * dl_pct / 100
+
+    out: dict = {"static_floor": dd_floor_usd, "daily_loss_limit": daily_limit_usd,
+                 "drawdown_type": dd_type}
     if tel:
         ts, equity, day_start, eng, open_n, open_risk, cb = tel[0]
         equity, day_start = float(equity), float(day_start)
         out["telemetry"] = {
             "ts": ts.isoformat(), "equity": equity, "day_start_equity": day_start,
             "daily_pnl": equity - day_start,
-            "daily_buffer_left": max(equity - (day_start - 3_000), 0.0),
-            "dd_buffer_left": max(equity - 94_000, 0.0),
+            "daily_buffer_left": max(equity - (day_start - daily_limit_usd), 0.0),
+            "dd_buffer_left": max(equity - dd_floor_usd, 0.0),
             "open_positions": open_n,
             "open_risk_usd": float(open_risk) if open_risk is not None else None,
             "cb_halted": cb,

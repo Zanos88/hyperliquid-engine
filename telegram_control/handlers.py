@@ -170,9 +170,12 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
         paper_positions = open_risk = cb_halted = None
 
     daily_pnl = equity - day_start
-    daily_floor = day_start - 3_000
+    from risk.challenge import daily_floor as _dfloor, dd_floor as _ddfloor
+    _cfg = services.store.get_challenge_config()
+    _hwm = services.store.get_hwm()
+    daily_floor = _dfloor(_cfg, day_start)
     daily_left = max(equity - daily_floor, 0.0)
-    dd_left = max(equity - 94_000, 0.0)
+    dd_left = max(equity - _ddfloor(_cfg, _hwm), 0.0)
 
     try:
         s = services.store.get_strategy_settings()
@@ -545,6 +548,8 @@ async def cb_take_signal(update, context, services: ControlServices) -> None:
         day_start_equity=snap["day_start_equity"],
         open_positions_count=snap["open_positions_count"],
         risk_pct=risk_pct, alpha=params["alpha"], max_concurrent=params["max_concurrent"],
+        challenge_cfg=services.store.get_challenge_config(),
+        hwm=services.store.get_hwm(),
     )
     if not decision.approved:
         await _reply(update, "❌ Gate rejected:\n- " + "\n- ".join(decision.reasons))

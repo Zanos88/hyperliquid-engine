@@ -186,6 +186,8 @@ async def _manual_buy(update, services: ControlServices, risk_usd: float,
         day_start_equity=snap["day_start_equity"],
         open_positions_count=snap["open_positions_count"],
         risk_pct=risk_pct, alpha=params["alpha"], max_concurrent=params["max_concurrent"],
+        challenge_cfg=services.store.get_challenge_config(),
+        hwm=services.store.get_hwm(),
     )
     if not decision.approved:
         await _reply(update, "❌ Gate rejected:\n- " + "\n- ".join(decision.reasons) +

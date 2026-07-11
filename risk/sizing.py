@@ -83,6 +83,7 @@ def size_attenuated(
     risk_pct: float = DEFAULT_RISK_PCT,
     alpha: float = DEFAULT_ALPHA,
     sz_decimals: int = DEFAULT_BTC_SZ_DECIMALS,
+    floor_usd: float = STATIC_FLOOR_USD,
 ) -> tuple[float, float, float]:
     """V2 sizing: returns (quantity, risk_usd, attenuation_applied).
 
@@ -99,7 +100,7 @@ def size_attenuated(
     if risk_per_unit == 0:
         raise ValueError("entry_price and stop_price must differ")
 
-    att = attenuation(equity, peak_equity, alpha=alpha)
+    att = attenuation(equity, peak_equity, alpha=alpha, floor=floor_usd)
     risk_usd = equity * risk_pct * att
     raw_quantity = risk_usd / risk_per_unit
     return truncate_to_step(raw_quantity, sz_decimals), risk_usd, att

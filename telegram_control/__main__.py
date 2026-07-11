@@ -50,7 +50,11 @@ def build_account_snapshot(store, execution):
             if row is None:
                 raise RuntimeError("no live account and no telemetry — cannot build snapshot")
             equity, day_start = float(row[0]), float(row[1])
-            return {"equity": equity, "peak_equity": equity,
+            try:
+                peak = max(store.get_hwm(), equity)  # persisted HWM, restart-safe
+            except Exception:
+                peak = equity
+            return {"equity": equity, "peak_equity": peak,
                     "day_start_equity": day_start, "open_positions_count": 0}
     return snapshot
 

@@ -60,6 +60,42 @@ class TelemetryStore:
             conn.execute(sql)
         logger.info("telemetry schema applied")
 
+    # ── challenge tier config + high-water mark ──
+
+    def get_challenge_config(self):
+        """Tier parameters (risk/challenge.ChallengeConfig). Fails loudly if
+        the row is missing — every floor consumer must fail closed."""
+        from risk.challenge import ChallengeConfig
+        with contextlib.nullcontext(self._connect()) as conn:
+            row = conn.execute(
+                """SELECT drawdown_type, max_drawdown_pct, daily_loss_pct,
+                          initial_balance FROM challenge_config WHERE id = 1"""
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("challenge_config row missing — apply_schema() not run?")
+        return ChallengeConfig(row[0], float(row[1]), float(row[2]), float(row[3]))
+
+    def get_hwm(self) -> float:
+        with contextlib.nullcontext(self._connect()) as conn:
+            row = conn.execute("SELECT hwm FROM equity_hwm WHERE id = 1").fetchone()
+        if row is None:
+            raise RuntimeError("equity_hwm row missing — apply_schema() not run?")
+        return float(row[0])
+
+    def update_hwm(self, equity: float) -> float:
+        """Ratchet the persisted high-water mark. GREATEST guarantees it can
+        only ever move up, whatever the caller passes. Returns the new HWM."""
+        with contextlib.nullcontext(self._connect()) as conn:
+            row = conn.execute(
+                """INSERT INTO equity_hwm (id, hwm) VALUES (1, %s)
+                   ON CONFLICT (id) DO UPDATE
+                       SET hwm = GREATEST(equity_hwm.hwm, EXCLUDED.hwm),
+                           updated_at = now()
+                   RETURNING hwm""",
+                (equity,),
+            ).fetchone()
+        return float(row[0])
+
     # ── telemetry ──
 
     def record_telemetry(
@@ -74,7 +110,9 @@ class TelemetryStore:
         open_risk_usd: float | None = None,
         cb_halted: bool | None = None,
     ) -> None:
-        daily_floor = day_start_equity - 3000
+        from risk.challenge import daily_floor as _daily_floor, dd_floor as _dd_floor
+        cfg = self.get_challenge_config()
+        hwm = self.get_hwm()
         with contextlib.nullcontext(self._connect()) as conn:
             conn.execute(
                 """INSERT INTO portfolio_telemetry
@@ -83,7 +121,8 @@ class TelemetryStore:
                     open_positions, open_risk_usd, cb_halted)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 (symbol, equity, balance, unrealized_pnl, day_start_equity,
-                 equity - daily_floor, equity - 94_000, engine_state,
+                 equity - _daily_floor(cfg, day_start_equity),
+                 equity - _dd_floor(cfg, hwm), engine_state,
                  open_positions, open_risk_usd, cb_halted),
             )
 

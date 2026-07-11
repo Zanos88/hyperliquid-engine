@@ -118,7 +118,12 @@ def run() -> None:
         day_start_equity=cfg["account"]["starting_equity_usd"],
     )
     breaker = CircuitBreaker(day_start_equity=ledger.equity)
-    peak_equity = ledger.equity
+    # Persisted high-water mark (equity_hwm table): survives restarts, so
+    # attenuation/trailing floors no longer reset with the paper day. The
+    # DB GREATEST means seeding with the paper starting equity is a no-op
+    # once a higher mark exists.
+    challenge_cfg = store.get_challenge_config()
+    peak_equity = store.update_hwm(ledger.equity)
 
     last_trigger_open_seen: int | None = None
     active_combo_seen: tuple[str, str] | None = None
@@ -147,6 +152,7 @@ def run() -> None:
             "open_positions": len(ledger.open_positions),
             "position_line": position_line(),
             "last_price": latest_price, "levels": latest_levels,
+            "challenge_cfg": challenge_cfg, "hwm": peak_equity,
         }
     last_heartbeat_at = datetime.now(timezone.utc)
     last_day = datetime.now(timezone.utc).date()
@@ -253,7 +259,8 @@ def run() -> None:
 
                     if isinstance(result, Signal) and is_new_alignment:
                         _handle_signal(result, cfg, store, execution, telegram, ledger,
-                                       breaker, peak_equity, latest_indicators, settings)
+                                       breaker, peak_equity, latest_indicators, settings,
+                                       challenge_cfg=challenge_cfg)
                     elif isinstance(result, SuppressedSignal) and is_new_alignment:
                         logger.info("Signal suppressed: %s", result.reason)
 
@@ -266,7 +273,7 @@ def run() -> None:
                                           context=alert_context(settings=settings)), settings))
                     logger.info("Paper exit: %s %.2fR", closed_pos.exit_reason, closed_pos.pnl_r)
 
-                peak_equity = max(peak_equity, ledger.equity)
+                peak_equity = store.update_hwm(ledger.equity)
                 breaker.update(ledger.current_equity())
                 if breaker.just_tripped():
                     halt_events_today += 1
@@ -320,10 +327,13 @@ def run() -> None:
 
 
 def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
-                   breaker, peak_equity: float, indicators: dict, settings: dict) -> None:
+                   breaker, peak_equity: float, indicators: dict, settings: dict,
+                   challenge_cfg=None) -> None:
     """Gate the signal; post Frame A; auto-take (dry-run) when ACTIVE."""
     engine_state = store.get_engine_state()
     params = store.get_risk_params()
+    if challenge_cfg is None:
+        challenge_cfg = store.get_challenge_config()
 
     if breaker.is_halted():
         logger.info("Signal blocked by circuit breaker (%s)", breaker.halt_reason)
@@ -337,6 +347,7 @@ def _handle_signal(signal: Signal, cfg, store, execution, telegram, ledger,
         risk_pct=params["risk_pct"], alpha=params["alpha"],
         max_concurrent=params["max_concurrent"],
         sz_decimals=cfg["risk"]["btc_sz_decimals"],
+        challenge_cfg=challenge_cfg, hwm=peak_equity,
     )
 
     signal_id = str(ULID())

@@ -12,24 +12,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from risk import challenge
+from risk.challenge import DEFAULT_CONFIG, ChallengeConfig
 from risk.sizing import (
     DEFAULT_ALPHA,
     DEFAULT_BTC_SZ_DECIMALS,
     DEFAULT_RISK_PCT,
-    STATIC_FLOOR_USD,
     size_attenuated,
 )
 from strategy.signals import Signal
 
-DAILY_LOSS_LIMIT_USD = 3_000.0
 MIN_REWARD_RISK = 2.0
 VENUE_MIN_QTY_BTC = 0.001  # verified: api.md Available Assets
 DEFAULT_SOFT_BUFFER_USD = 500.0
 DEFAULT_MAX_CONCURRENT = 1
 
 
-def binding_floor(day_start_equity: float) -> float:
-    return max(day_start_equity - DAILY_LOSS_LIMIT_USD, STATIC_FLOOR_USD)
+def binding_floor(day_start_equity: float,
+                  cfg: ChallengeConfig = DEFAULT_CONFIG,
+                  hwm: float | None = None) -> float:
+    """Tier-parameterized binding floor (risk/challenge.py). Defaults
+    reproduce the historical max(day_start − 3000, 94000) exactly."""
+    return challenge.binding_floor(cfg, day_start_equity, hwm)
 
 
 @dataclass(frozen=True)
@@ -55,10 +59,16 @@ def evaluate_gate(
     max_concurrent: int = DEFAULT_MAX_CONCURRENT,
     sz_decimals: int = DEFAULT_BTC_SZ_DECIMALS,
     soft_buffer_usd: float = DEFAULT_SOFT_BUFFER_USD,
+    challenge_cfg: ChallengeConfig = DEFAULT_CONFIG,
+    hwm: float | None = None,
 ) -> GateDecision:
-    """All-must-pass pre-trade gate. Returns a decision with named reasons."""
+    """All-must-pass pre-trade gate. Returns a decision with named reasons.
+
+    challenge_cfg/hwm parameterize the account-tier floors (risk/challenge);
+    the defaults reproduce the historical static-tier behavior exactly, so
+    callers that don't pass them are unchanged."""
     reasons: list[str] = []
-    floor = binding_floor(day_start_equity)
+    floor = binding_floor(day_start_equity, challenge_cfg, hwm)
 
     if engine_state != "ACTIVE":
         reasons.append(f"engine state is {engine_state}, not ACTIVE")
@@ -75,6 +85,7 @@ def evaluate_gate(
             equity=equity, peak_equity=peak_equity,
             entry_price=signal.entry, stop_price=signal.stop,
             risk_pct=risk_pct, alpha=alpha, sz_decimals=sz_decimals,
+            floor_usd=challenge.dd_floor(challenge_cfg, hwm),
         )
     except ValueError as exc:
         reasons.append(f"sizing rejected: {exc}")
