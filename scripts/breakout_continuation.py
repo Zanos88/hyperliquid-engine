@@ -181,6 +181,112 @@ def run_cell(trig: list[Candle], tf: str, bias_signs, bias_ms, target: str,
     return trades
 
 
+def run_cell_nostop(trig: list[Candle], tf: str, bias_signs, bias_ms,
+                    vol_mult: float, floor: float) -> list[dict]:
+    """Study 1: identical breakout ENTRY, but NO STOP and hold-until-profit
+    exit (Track 4's original no-stop philosophy). MAE-before-profit tracked
+    the same way as Track 4, so the distribution is directly comparable."""
+    n = len(trig)
+    atr = wilder_atr(trig, ATR_PERIOD)
+    vols = [c.volume for c in trig]
+    vol_avg = sma(vols, VOL_AVG_WINDOW)
+    highs, lows = confirmed_levels(trig)
+    hi_cur = lo_cur = 0
+    last_high = last_low = None
+    trades: list[dict] = []
+    open_t: dict | None = None
+    for i in range(WARMUP, n):
+        c = trig[i]
+        while hi_cur < len(highs) and highs[hi_cur][0] <= i:
+            last_high = highs[hi_cur][1]; hi_cur += 1
+        while lo_cur < len(lows) and lows[lo_cur][0] <= i:
+            last_low = lows[lo_cur][1]; lo_cur += 1
+        if open_t is not None:
+            side, e = open_t["side"], open_t["entry"]
+            adverse = (c.low / e - 1) if side == "LONG" else (e - c.high) / e
+            open_t["mae"] = min(open_t["mae"], adverse)
+            net = ((c.close / e - 1) if side == "LONG" else (e - c.close) / e) - 2 * FEE
+            if net > 0:
+                open_t.update(exit_ts=_utc(c.close_time_ms), net_pct=net * 100,
+                              bars_held=i - open_t["entry_i"], exit_reason="profit")
+                trades.append(open_t); open_t = None
+            continue
+        bj = bisect_right(bias_ms, c.close_time_ms) - 1
+        bias = bias_signs[bj] if bj >= 0 else 0
+        if bias == 0 or vol_avg[i] <= 0 or not (vols[i] >= vol_mult * vol_avg[i] and vols[i] >= floor):
+            continue
+        prev, close = trig[i - 1].close, c.close
+        if bias == 1 and last_high is not None and prev <= last_high < close:
+            open_t = {"side": "LONG", "entry_i": i, "entry": close,
+                      "entry_ts": _utc(c.close_time_ms), "mae": 0.0}
+        elif bias == -1 and last_low is not None and prev >= last_low > close:
+            open_t = {"side": "SHORT", "entry_i": i, "entry": close,
+                      "entry_ts": _utc(c.close_time_ms), "mae": 0.0}
+    if open_t is not None:
+        c = trig[-1]; e = open_t["entry"]
+        net = ((c.close / e - 1) if open_t["side"] == "LONG" else (e - c.close) / e) - 2 * FEE
+        open_t.update(exit_ts="OPEN", net_pct=net * 100,
+                      bars_held=n - 1 - open_t["entry_i"], exit_reason="unresolved")
+        trades.append(open_t)
+    return trades
+
+
+def summarize_nostop(trades: list[dict], bars_per_day: float) -> dict:
+    if not trades:
+        return {"trades": 0}
+    resolved = [t for t in trades if t["exit_reason"] == "profit"]
+    ttr = sorted(t["bars_held"] / bars_per_day for t in resolved)
+    maes = sorted(t["mae"] * 100 for t in trades)
+    def pctl(v, q):
+        return round(v[min(len(v) - 1, math.ceil(q * len(v)) - 1)], 2) if v else None
+    return {
+        "trades": len(trades), "resolved": len(resolved),
+        "unresolved": sum(1 for t in trades if t["exit_reason"] == "unresolved"),
+        "sum_net_pct": round(sum(t["net_pct"] for t in trades), 2),
+        "worst_mae_pct": round(min(maes), 2),
+        "mae_p50": pctl(maes, 0.5), "mae_p90": pctl(maes, 0.1),  # p10 of signed = deep tail
+        "share_mae_le_5pct": round(sum(1 for m in maes if m <= -5) / len(maes), 2),
+        "ttr_days": {"median": pctl(ttr, 0.5), "p90": pctl(ttr, 0.9),
+                     "max": round(ttr[-1], 1) if ttr else None},
+    }
+
+
+def phase_run_nostop() -> None:
+    now = int(time.time() * 1000)
+    span = lambda tf: 5100 * interval_seconds(tf) * 1000
+    bpd = {"15m": 96.0, "1h": 24.0}
+    results = []
+    pooled_1h: list[dict] = []
+    for tf in TRIGGER_TFS:
+        trig = fetch_candles("BTC", tf, now - span(tf), now)
+        floor = volume_floor(trig)
+        c4 = fetch_candles("BTC", "4h", trig[0].close_time_ms - span("4h"), now)
+        days = (trig[-1].close_time_ms - trig[0].close_time_ms) / 86400000
+        print(f"\n{tf}: {len(trig)} bars, {days:.0f}d, floor {floor:.1f}")
+        for m in BIAS_METHODS:
+            signs, bms = bias_series_4h(c4, m)
+            for vm in VOL_MULTS:
+                trades = run_cell_nostop(trig, tf, signs, bms, vm, floor)
+                s = summarize_nostop(trades, bpd[tf])
+                results.append({"bias": m, "tf": tf, "vol_mult": vm, "under_powered": tf == "15m",
+                                "summary": s, "trades": trades})
+                if tf == "1h":
+                    pooled_1h.extend(trades)
+                flag = " [15m thin]" if tf == "15m" else ""
+                if s["trades"]:
+                    print(f"  {m:5} vx{vm}: n={s['trades']:3d} resolved {s['resolved']:3d} "
+                          f"unres {s['unresolved']:2d} netP&L {s['sum_net_pct']:+7.2f}% "
+                          f"worstMAE {s['worst_mae_pct']}% mae<=-5% {s['share_mae_le_5pct']} "
+                          f"ttr {s['ttr_days']['median']}/{s['ttr_days']['p90']}/{s['ttr_days']['max']}d{flag}")
+    pool = summarize_nostop(pooled_1h, 24.0)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "continuation_no_stop.json").write_text(
+        json.dumps({"ran_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "results": results, "pooled_1h": pool}, indent=1), encoding="utf-8")
+    print(f"\nPOOLED 1H (all bias×vol): {json.dumps(pool)}")
+    print("written: research/output/continuation_no_stop.json")
+
+
 def summarize(trades: list[dict], structural_skips: int = 0) -> dict:
     if not trades:
         return {"trades": 0, "structural_skips": structural_skips}
@@ -301,14 +407,30 @@ def phase_selfcheck() -> None:
     base = run_cell(cs[:74], "1h", signs[:74], bms[:74], "2r", 2.0, 50.0)
     full = run_cell(cs, "1h", signs, bms, "2r", 2.0, 50.0)
     assert base and full[0]["entry_i"] == base[0]["entry_i"] and full[0]["entry"] == base[0]["entry"]
+
+    # Study 1: no-stop hold-until-profit — a breakout that dips then recovers
+    # must exit profitable, with a negative MAE recorded before recovery.
+    csd = _long_series()
+    csd[70] = Candle(70000, 70999, 104.5, 106.2, 104.3, 106, 5000.0)
+    for i in range(71, 76):
+        csd[i] = _bar(i, 103.0)      # dips below entry (drawdown)
+    for i in range(76, 80):
+        csd[i] = _bar(i, 108.0)      # recovers to profit
+    tn = run_cell_nostop(csd, "1h", [1] * 80, bms, 2.0, 50.0)
+    assert tn and tn[0]["exit_reason"] == "profit" and tn[0]["mae"] < 0 and tn[0]["net_pct"] > 0, tn
     print("selfcheck: all assertions passed")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--phase", required=True, choices=("selfcheck", "run"))
+    ap.add_argument("--phase", required=True, choices=("selfcheck", "run", "run-nostop"))
     args = ap.parse_args()
-    phase_selfcheck() if args.phase == "selfcheck" else phase_run()
+    if args.phase == "selfcheck":
+        phase_selfcheck()
+    elif args.phase == "run":
+        phase_run()
+    else:
+        phase_run_nostop()
 
 
 if __name__ == "__main__":
