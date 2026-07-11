@@ -141,6 +141,164 @@ def run_config(candles_4h, fisher, bias_dirs, bias_close_ms, thr, cap_days,
     return trades
 
 
+def run_config_dca(candles_4h, fisher, bias_dirs, bias_close_ms, thr,
+                   trigger: str, max_adds: int = 3,
+                   div_lookback: int = 10, reversal_delta: float = 0.25) -> list[dict]:
+    """Round 6: multi-tranche episodes (Martingale-adjacent — adds increase
+    exposure into adversity). Single-entry run_config is left untouched.
+
+    Pre-registered rules:
+      deeper     add at each new level thr+0.5*k below entry (-1.75, -2.25, -2.75)
+      divergence add on a new local low (trailing div_lookback bars, lower than
+                 the last recorded low event) whose Fisher is LESS extreme than
+                 at that prior low; the reference low updates on every new low
+                 event whether or not it diverges
+      reversal   add when Fisher turns up reversal_delta off the episode min;
+                 re-arms only after a NEW min below the last add's reference
+    Exits evaluated BEFORE adds each bar (no add on the exit bar), on the
+    BLENDED position: first-profit = close beats avg entry by round-trip fees
+    (per-unit fees are tranche-count invariant); Fisher-reversal at +1.5.
+    Equal tranches, fixed % of initial capital each; max_adds bound is a
+    technical default, not policy."""
+    episodes: list[dict] = []
+    ep: dict | None = None
+    for i in range(WARMUP_4H, len(candles_4h)):
+        c = candles_4h[i]
+        if ep is not None:
+            k = len(ep["tranches"])
+            avg_e = sum(px for _, px in ep["tranches"]) / k
+            # full-exposure adverse excursion, in per-tranche-notional units
+            adverse_units = sum(c.low / px - 1 for _, px in ep["tranches"])
+            ep["mae_units"] = min(ep["mae_units"], adverse_units)
+            ep["mae_deployed"] = min(ep["mae_deployed"], adverse_units / k)
+            ret = c.close / avg_e - 1
+            net = ret - 2 * FEE
+            fis_hit = fisher[i] >= REVERSAL_EXIT_LEVEL
+            if net > 0 or fis_hit:
+                ep.update(exit_ts=_ms_to_utc(c.close_time_ms), exit_px=c.close,
+                          avg_entry=avg_e, net_pct=net * 100,
+                          pnl_units=k * net * 100,
+                          bars_held=i - ep["tranches"][0][0],
+                          exit_reason=("reversion" if net > 0 else "fisher_reversal"))
+                episodes.append(ep)
+                ep = None
+                continue
+            # add-trigger checks (only while still open, tranches remaining)
+            if k < 1 + max_adds:
+                add = False
+                if trigger == "deeper":
+                    next_level = -(thr + 0.5 * k)
+                    if fisher[i] <= next_level:
+                        add = True
+                elif trigger == "divergence":
+                    lo = min(x.low for x in candles_4h[i - div_lookback + 1: i + 1])
+                    if c.low == lo and c.low < ep["ref_low"]:
+                        if fisher[i] > ep["ref_low_fisher"]:
+                            add = True
+                        ep["ref_low"], ep["ref_low_fisher"] = c.low, fisher[i]
+                elif trigger == "reversal":
+                    if fisher[i] < ep["ep_min"]:
+                        ep["ep_min"] = fisher[i]
+                    if (ep["ep_min"] < ep["ref_min"]
+                            and fisher[i] >= ep["ep_min"] + reversal_delta):
+                        add = True
+                        ep["ref_min"] = ep["ep_min"]
+                if add:
+                    ep["tranches"].append((i, c.close))
+                    ep["add_gaps_bars"].append(i - ep["last_tranche_i"])
+                    ep["last_tranche_i"] = i
+                    ep["add_fishers"].append(round(fisher[i], 2))
+            continue
+        # flat: base entry identical to the single-entry design
+        bj = bisect_right(bias_close_ms, c.close_time_ms) - 1
+        b = bias_dirs[bj] if bj >= 0 else 0
+        if fisher[i] <= -thr and b == 1:
+            ep = {"tranches": [(i, c.close)], "entry_ts": _ms_to_utc(c.close_time_ms),
+                  "entry1": c.close, "fisher_at_entry": round(fisher[i], 2),
+                  "mae_units": 0.0, "mae_deployed": 0.0,
+                  "last_tranche_i": i, "add_gaps_bars": [], "add_fishers": [],
+                  "ref_low": c.low, "ref_low_fisher": fisher[i],
+                  "ep_min": fisher[i], "ref_min": fisher[i]}
+    if ep is not None:
+        k = len(ep["tranches"])
+        avg_e = sum(px for _, px in ep["tranches"]) / k
+        c = candles_4h[-1]
+        net = (c.close / avg_e - 1) - 2 * FEE
+        ep.update(exit_ts="OPEN", exit_px=c.close, avg_entry=avg_e,
+                  net_pct=net * 100, pnl_units=k * net * 100,
+                  bars_held=len(candles_4h) - 1 - ep["tranches"][0][0],
+                  exit_reason="unresolved")
+        episodes.append(ep)
+    for ep in episodes:
+        ep["k"] = len(ep["tranches"])
+        ep["tranches"] = [(i, px) for i, px in ep["tranches"]]
+    return episodes
+
+
+def summarize_dca(episodes: list[dict]) -> dict:
+    if not episodes:
+        return {"episodes": 0}
+    total_units = sum(e["pnl_units"] for e in episodes)          # % of ONE tranche's notional
+    ks = [e["k"] for e in episodes]
+    multi = [e for e in episodes if e["k"] > 1]
+    reverted = sorted(e["bars_held"] / BARS_PER_DAY_4H
+                      for e in episodes if e["exit_reason"] == "reversion")
+    def pct(v, q):
+        return v[min(len(v) - 1, math.ceil(q * len(v)) - 1)] if v else None
+    hostages = [e for e in episodes if e["mae_deployed"] * 100 <= -5]
+    worst = min(episodes, key=lambda e: e["mae_units"])
+    return {
+        "episodes": len(episodes),
+        "wins": sum(1 for e in episodes if e["pnl_units"] > 0),
+        "tranche_distribution": {str(k): ks.count(k) for k in sorted(set(ks))},
+        "total_pnl_units": round(total_units, 2),
+        "capital_pnl_pct": {f"{s:.0f}%": round(total_units * s / 100, 2) for s in SIZES_PCT},
+        "max_concurrent_tranches": max(ks),
+        "worst_case_exposure_pct_capital": {f"{s:.0f}%": max(ks) * s for s in SIZES_PCT},
+        "avg_entry_improvement_pct": (round(sum((e["entry1"] - e["avg_entry"]) / e["entry1"]
+                                                for e in multi) / len(multi) * 100, 3)
+                                      if multi else None),
+        "worst_mae_units": round(worst["mae_units"] * 100, 2),
+        "worst_mae_pct_capital": {f"{s:.0f}%": round(worst["mae_units"] * 100 * s / 100, 2)
+                                  for s in SIZES_PCT},
+        "worst_mae_deployed_pct": round(min(e["mae_deployed"] for e in episodes) * 100, 2),
+        "worst_episode": {kk: worst[kk] for kk in ("entry_ts", "k", "exit_reason", "net_pct", "pnl_units")},
+        "ttr_days": ({"median": round(pct(reverted, 0.5), 1), "p90": round(pct(reverted, 0.9), 1),
+                      "max": round(reverted[-1], 1)} if reverted else None),
+        "exit_reasons": {r: sum(1 for e in episodes if e["exit_reason"] == r)
+                         for r in ("reversion", "fisher_reversal", "unresolved")},
+        "rescue_dependence_pct": (round(100 * sum(e["pnl_units"] for e in hostages) / total_units, 1)
+                                  if total_units != 0 else None),
+        "add_gaps_bars_all": [g for e in episodes for g in e["add_gaps_bars"]],
+        "mean_tranches": round(sum(ks) / len(ks), 2),
+    }
+
+
+def phase_run_dca(thr: float, tag: str, max_adds: int = 3) -> None:
+    candles_4h, _ = load_snapshot("4h")
+    fisher = fisher_transform(candles_4h)[0]
+    bc, _ = load_snapshot("12h")
+    dirs, times = bias_direction_series(bc, 30)   # Round 4 baseline: 12H SMA30
+    out = {}
+    for trig in ("deeper", "divergence", "reversal"):
+        eps = run_config_dca(candles_4h, fisher, dirs, times, thr, trig, max_adds)
+        s = summarize_dca(eps)
+        out[trig] = {"summary": s, "episodes": eps}
+        print(f"\n=== {trig} ===")
+        print(json.dumps({k: v for k, v in s.items() if k != "add_gaps_bars_all"}, indent=1))
+        if s.get("add_gaps_bars_all"):
+            gaps_d = [round(g / BARS_PER_DAY_4H, 1) for g in s["add_gaps_bars_all"]]
+            print(f"add gaps (days): {gaps_d}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"track4_results_{tag}.json"
+    p.write_text(json.dumps(
+        {"ran_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         "base": {"thr": thr, "bias": "12h/SMA30", "long_only": True,
+                  "exit": "first_profit_blended", "max_adds": max_adds},
+         "designs": out}, indent=1), encoding="utf-8")
+    print(f"\nwritten: {p}")
+
+
 def summarize(trades: list[dict]) -> dict:
     if not trades:
         return {"trades": 0}
@@ -259,12 +417,50 @@ def phase_selfcheck() -> None:
     fisher_rev = [-2.5 if i == 61 else (1.6 if i == 70 else 0.0) for i in range(n)]
     trades3 = run_config(down, fisher_rev, [1] * n, [c.close_time_ms for c in down], 2.0, None)
     assert trades3 and trades3[0]["exit_reason"] == "fisher_reversal" and trades3[0]["net_pct"] < 0
+    # ── Round 6 DCA triggers ──
+    n2 = 200
+    flatpx = [Candle(i * 100, i * 100 + 99, 100, 100.05, 99.95, 100, 0.0) for i in range(n2)]
+    times2 = [c.close_time_ms for c in flatpx]
+    # deeper: entry at -1.3, adds at -1.8 and -2.3, then blended profit exit
+    fD = [0.0] * n2
+    fD[70], fD[72], fD[74] = -1.3, -1.8, -2.3
+    pxD = list(flatpx)
+    for j in range(70, 75):
+        p = 100 - (j - 69) * 2.0
+        pxD[j] = Candle(j * 100, j * 100 + 99, p, p + 0.05, p - 0.05, p, 0.0)
+    for j in range(75, n2):
+        pxD[j] = Candle(j * 100, j * 100 + 99, 99, 99.05, 98.95, 99, 0.0)
+    epsD = run_config_dca(pxD, fD, [1] * n2, times2, 1.25, "deeper", 3)
+    assert len(epsD) == 1 and epsD[0]["k"] == 3, epsD  # entry + 2 adds (-2.75 never reached)
+    assert epsD[0]["exit_reason"] == "reversion" and epsD[0]["pnl_units"] > 0
+    assert epsD[0]["mae_units"] < 0
+    # divergence: lower low with less-extreme fisher -> exactly one add
+    fV = [0.0] * n2
+    fV[70], fV[80] = -1.4, -1.1
+    pxV = list(flatpx)
+    pxV[70] = Candle(7000, 7099, 95, 95.05, 94.9, 95, 0.0)
+    for j in range(71, 80):
+        pxV[j] = Candle(j * 100, j * 100 + 99, 95, 95.2, 94.95, 95, 0.0)
+    pxV[80] = Candle(8000, 8099, 94, 94.05, 93.9, 94, 0.0)   # lower low, fisher -1.1 > -1.4
+    for j in range(81, n2):
+        pxV[j] = Candle(j * 100, j * 100 + 99, 96, 96.05, 95.95, 96, 0.0)
+    epsV = run_config_dca(pxV, fV, [1] * n2, times2, 1.25, "divergence", 3)
+    assert len(epsV) == 1 and epsV[0]["k"] == 2, epsV
+    # reversal: new min below entry, then +0.25 turn -> one add; no re-fire without new min
+    fR = [0.0] * n2
+    fR[70], fR[71], fR[72], fR[73], fR[74] = -1.3, -1.6, -1.34, -1.33, -1.32
+    pxR = list(pxD)
+    epsR = run_config_dca(pxR, fR, [1] * n2, times2, 1.25, "reversal", 3)
+    assert len(epsR) == 1 and epsR[0]["k"] == 2, epsR
+    # blended fee math: per-unit fees are tranche-count invariant
+    assert abs(epsD[0]["pnl_units"] - epsD[0]["k"] * epsD[0]["net_pct"]) < 1e-9
     print("selfcheck: all assertions passed")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--phase", required=True, choices=("selfcheck", "run"))
+    ap.add_argument("--phase", required=True, choices=("selfcheck", "run", "run-dca"))
+    ap.add_argument("--max-adds", type=int, default=3)
     ap.add_argument("--thresholds", default="2.0,3.0",
                     help="entry |Fisher| thresholds, comma-separated (round 1: 2.0,3.0; "
                          "round 2 per Zane's clarified intent: 1.5)")
@@ -280,6 +476,9 @@ def main() -> None:
     args = ap.parse_args()
     if args.phase == "selfcheck":
         phase_selfcheck()
+    elif args.phase == "run-dca":
+        thr = float(args.thresholds.split(",")[0])
+        phase_run_dca(thr, args.tag or "r6_dca", args.max_adds)
     else:
         thresholds = tuple(float(t) for t in args.thresholds.split(","))
         caps = tuple(None if c == "none" else int(c) for c in args.caps.split(","))

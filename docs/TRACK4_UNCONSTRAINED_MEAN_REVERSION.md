@@ -248,6 +248,89 @@ dynamics. The threshold trades frequency for episode-exclusion, linearly:
 trades) and a clean window. −1.25 vs −1.50 is a choice between +6.66% with
 a 23-day −16.5% hostage and +4.50% without it — on this window.
 
+## Round 6 — DCA add-triggers (2026-07-11)
+
+**Named plainly up front: this is Martingale-adjacent** — every design adds
+exposure into an adverse move. The 2024-08-27 hostage (−16.5%, 23.5 days)
+is exactly the episode these designs would add into; whether that
+multiplies the recovery or the loss is unknowable until it resolves. (No
+Round 5 exists in this repo; per the brief, Round 6 builds on Round 4's
+baseline — first-profit exit, NOT target exits.)
+
+**Fixed:** base entry 4H Fisher ≤ −1.25, 12H SMA30 bias, long-only,
+first-profit exit on the BLENDED position, no stop, **no leverage**
+(explicitly out of scope), no cap. **Technical default, not policy: max 3
+adds (4 tranches), equal tranches at the standard 5%/10%-of-initial-capital
+sizing. Exposure arithmetic stated before any results: at 4 tranches, one
+unstoppable position can commit 20% (at 5% tranches) to 40% (at 10%) of
+capital.** Exits are evaluated before adds each bar; per-unit fees are
+tranche-count invariant. Single-entry code path untouched (Round-4
+regression re-verified exact: 17 / +6.66% / −16.53%).
+
+Baseline for all comparisons: Round 4's −1.25 cell = 17 trades, **+6.66
+units** (1 unit = % of one tranche's notional), worst MAE −16.53%.
+
+| Design | Episodes | Tranches (1/2/3/4) | P&L (units) | Lump-sum control¹ | Worst-case exposure @10% | Avg-entry gain² | Worst MAE (units / deployed) | ttr med/p90/max | Rescue-dep³ |
+|---|---|---|---|---|---|---|---|---|---|
+| deeper-extreme | 17 (all win) | 15/2/0/0 | +8.34 | +7.46 → **beats +0.88** | 20% ($20k) | +0.63% | −16.5 / −16.5% | 0.5/2.7/**23.3d** | 3.0% |
+| divergence | 17 (all win) | 12/2/2/1 | +9.43 | +10.19 → **loses −0.76** | **40% ($40k)** | +1.63% | −10.7 / **−7.9%** | 0.5/2.3/**2.5d** | 15.1% |
+| confirmed-reversal | 17 (all win) | 13/4/0/0 | **+11.68** | +8.26 → **beats +3.42** | 20% ($20k) | +1.36% | **−26.9** / −13.4% | 0.5/2.7/21.3d | 7.2% |
+
+¹ Same mean deployed capital (mean tranches × baseline +6.66) as a single
+entry at tranche-1 price — the DCA-vs-lump-sum control.
+² Mean improvement of blended entry vs tranche-1 price, multi-tranche
+episodes only. ³ Share of P&L from episodes ever ≥5% underwater (deployed).
+
+### 6.1 Deeper-extreme adds — under-tested, honestly
+
+Added in only **2 of 17 episodes** (mean 1.12 tranches); the −2.25/−2.75
+levels never fired (corrected 4H Fisher min is −2.21), and notably the
+Aug-27 hostage itself **never reached −1.75** — the highest-risk trigger
+largely failed to trigger. +0.88 units over lump-sum on n=2 add-events is
+anecdote, not evidence. Per the brief's own standard: this design wasn't
+really tested by this window.
+
+### 6.2 Bullish-divergence adds — busiest, and loses to lump-sum
+
+Most active (5 episodes multi-tranche, one 4-tranche episode = the full
+40%-of-capital exposure case at 10% sizing). It added three tranches into
+the Aug-27 hostage — and the blended entry cut the episode's max
+time-to-revert from 23.3d to **2.5d** and its deployed MAE to −7.9%: DCA
+"working" visually. But the control exposes the catch: deploying the same
+average capital as a single entry would have returned **more** (+10.19 vs
++9.43 units). The extra tranches bought smoother optics, not better
+returns, and 15.1% of its P&L is rescue-dependent. Add-gaps: 0.2–1.5d —
+adds do cluster within episodes (min-gap guard is a justified follow-up).
+
+### 6.3 Confirmed-reversal adds — the only design that beats its control
+
++11.68 units vs +8.26 control (**+3.42, a 41% improvement on the same
+average capital**), with adds in 4 of 17 episodes at ~1-day spacing. The
+trade-off stated up front in the brief showed up exactly as predicted: it
+buys at worse prices than the extreme (avg-entry gain +1.36% < divergence's
++1.63%) but with confirmation — and it carried the round's worst
+full-exposure MAE (−26.9 units: the Aug-27 hostage at 2× size for 21.3
+days, −13.4% of deployed). At 10% tranches that episode sat −2.7% of
+capital underwater in an unstoppable position.
+
+### Round-6 honest read
+
+1. **Only confirmed-reversal survives its own control.** Deeper-extreme
+   barely fires (n=2); divergence is busier but strictly worse than
+   sizing bigger at entry. If anything from this round advances, it is
+   reversal-adds — on 4 add-events, in one regime, with the largest
+   full-exposure tail of the three.
+2. **The Martingale shape is visible in the numbers:** every design's
+   worst episode is the same Aug-27 hostage; adds either missed it
+   (deeper), smoothed it while diluting returns (divergence), or doubled
+   into it and won this time (reversal). "This time" is the operative
+   caveat — one non-bouncing dip converts the +3.42-unit edge into a
+   multi-tranche unbounded loss.
+3. n = 17 episodes, 2–5 add-events per design, one macro regime.
+   SIMULATED. Nothing here is promotable without forward evidence; the
+   named candidate for any future work is reversal-adds on the −1.25
+   base.
+
 ## Reproduce
 
 ```powershell
