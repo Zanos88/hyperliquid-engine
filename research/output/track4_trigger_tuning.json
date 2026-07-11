@@ -1,0 +1,42 @@
+{
+ "ran_at_utc": "2026-07-11T23:49:37+00:00",
+ "fixed": "12H SMA30 bias, thr -1.25, long-only, no-stop, first-profit",
+ "rows": [
+  {
+   "trigger_tf": "4h",
+   "days": 833,
+   "trades": 17,
+   "trades_per_year": 7.4,
+   "wins": 17,
+   "sum_net_pct": 6.66,
+   "worst_mae_pct": -16.53,
+   "ttr_median": 0.5,
+   "ttr_p90": 2.67,
+   "ttr_max": 23.3
+  },
+  {
+   "trigger_tf": "1h",
+   "days": 208,
+   "trades": 33,
+   "trades_per_year": 57.8,
+   "wins": 30,
+   "sum_net_pct": -2.1,
+   "worst_mae_pct": -7.95,
+   "ttr_median": 0.08,
+   "ttr_p90": 1.33,
+   "ttr_max": 4.8
+  },
+  {
+   "trigger_tf": "15m",
+   "days": 52,
+   "trades": 20,
+   "trades_per_year": 139.9,
+   "wins": 19,
+   "sum_net_pct": -0.87,
+   "worst_mae_pct": -4.28,
+   "ttr_median": 0.04,
+   "ttr_p90": 0.41,
+   "ttr_max": 0.5
+  }
+ ]
+}
