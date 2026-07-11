@@ -411,6 +411,63 @@ def phase_run(thresholds: tuple[float, ...] = ENTRY_THRESHOLDS, tag: str = "",
     print(f"\nwritten: {out} ({len(results)} configs)")
 
 
+def phase_trigger_tuning() -> None:
+    """Study 2: vary the Fisher/entry TRIGGER timeframe {4h, 1h, 15m}; fix
+    everything else at Round 4's baseline (12H SMA30 bias, thr -1.25,
+    long-only, no stop, first-profit exit). Window confound is real and
+    stated: the 5,000-bar cap makes 4h/1h/15m span ~2.3y / 208d / 52d, so
+    frequency is normalized to trades/year, not raw count."""
+    import time as _t
+    from datetime import datetime, timezone
+    from data.feed import fetch_candles
+    from strategy.timeframes import interval_seconds
+    from factor_correlation_study import DATA_DIR
+    bpd = {"4h": 6.0, "1h": 24.0, "15m": 96.0}
+    bc, _ = load_snapshot("12h")
+    dirs, btimes = bias_direction_series(bc, 30)
+    rows = []
+    now = int(_t.time() * 1000)
+    for tf in ("4h", "1h", "15m"):
+        p = DATA_DIR / f"BTC_{tf}_snapshot.json"
+        if p.exists():
+            candles, _ = load_snapshot(tf)
+        else:  # freeze 15m once (no frozen snapshot yet)
+            step = interval_seconds(tf) * 1000
+            cs = fetch_candles("BTC", tf, now - 5100 * step, now)
+            p.write_text(json.dumps({"coin": "BTC", "interval": tf,
+                "fetched_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "bar_count": len(cs), "split_index": int(0.7 * len(cs)),
+                "candles": [[c.open_time_ms, c.close_time_ms, c.open, c.high, c.low, c.close, c.volume]
+                            for c in cs]}), encoding="utf-8")
+            candles, _ = load_snapshot(tf)
+        fisher = fisher_transform(candles)[0]
+        trades = run_config(candles, fisher, dirs, btimes, 1.25, None,
+                            long_only=True, exit_mode="first_profit", atr_series=None)
+        days = (candles[-1].close_time_ms - candles[0].close_time_ms) / 86400000
+        rev = sorted(t["bars_held"] / bpd[tf] for t in trades if t["exit_reason"] in ("reversion", "both"))
+        maes = [t["mae"] * 100 for t in trades]
+        nets = [t["net_pct"] for t in trades]
+        wins = sum(1 for t in trades if t["net_pct"] > 0)
+        def pctl(v, q):
+            return round(v[min(len(v) - 1, math.ceil(q * len(v)) - 1)], 2) if v else None
+        row = {"trigger_tf": tf, "days": round(days), "trades": len(trades),
+               "trades_per_year": round(len(trades) / (days / 365), 1) if days else None,
+               "wins": wins, "sum_net_pct": round(sum(nets), 2),
+               "worst_mae_pct": round(min(maes), 2) if maes else None,
+               "ttr_median": pctl(rev, 0.5), "ttr_p90": pctl(rev, 0.9),
+               "ttr_max": round(rev[-1], 1) if rev else None}
+        rows.append(row)
+        print(f"{tf:3} ({row['days']}d): trades {row['trades']:3d} "
+              f"({row['trades_per_year']}/yr) wins {wins} netP&L {row['sum_net_pct']:+7.2f}% "
+              f"worstMAE {row['worst_mae_pct']}% ttr {row['ttr_median']}/{row['ttr_p90']}/{row['ttr_max']}d")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "track4_trigger_tuning.json").write_text(
+        json.dumps({"ran_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "fixed": "12H SMA30 bias, thr -1.25, long-only, no-stop, first-profit",
+                    "rows": rows}, indent=1), encoding="utf-8")
+    print("written: research/output/track4_trigger_tuning.json")
+
+
 def phase_selfcheck() -> None:
     # Synthetic: price dips (Fisher forced negative), bias UP, then recovers.
     n = 120
@@ -497,7 +554,8 @@ def phase_selfcheck() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--phase", required=True, choices=("selfcheck", "run", "run-dca"))
+    ap.add_argument("--phase", required=True,
+                    choices=("selfcheck", "run", "run-dca", "run-trigger"))
     ap.add_argument("--max-adds", type=int, default=3)
     ap.add_argument("--thresholds", default="2.0,3.0",
                     help="entry |Fisher| thresholds, comma-separated (round 1: 2.0,3.0; "
@@ -519,6 +577,8 @@ def main() -> None:
     elif args.phase == "run-dca":
         thr = float(args.thresholds.split(",")[0])
         phase_run_dca(thr, args.tag or "r6_dca", args.max_adds)
+    elif args.phase == "run-trigger":
+        phase_trigger_tuning()
     else:
         thresholds = tuple(float(t) for t in args.thresholds.split(","))
         caps = tuple(None if c == "none" else int(c) for c in args.caps.split(","))
