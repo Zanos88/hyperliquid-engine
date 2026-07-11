@@ -125,3 +125,82 @@ does not need to wait for the answer.
 
 No live deploy exists in this plan; Step 4 sign-off gates that, per the
 spec, after stress-test results are reviewed with real numbers.
+
+---
+
+# Steps 2–3 — BUILT (staging) + stress results, 2026-07-11
+
+## Design principle: deploy-neutral parameterization
+
+`challenge_config` is seeded with the CURRENT posture (static 6% @ 100k
+initial → $94,000; daily 3% → day_start − $3,000), so applying the schema
+and/or deploying the code changes **zero behavior** — proven three ways
+below. Flipping to Gold 2-Step is one explicit SQL update at Step-4
+sign-off, never part of a deploy.
+
+## What was built
+
+- **`risk/challenge.py`** — single source of truth: `ChallengeConfig`
+  (validated), `dd_floor` / `daily_floor` / `binding_floor`, both tier
+  shapes. `DEFAULT_CONFIG` = current posture.
+- **Schema (additive):** `challenge_config` + `equity_hwm` single-row
+  tables (seeded); `enforce_floor_guard()` rewritten to read both —
+  fail-closed if the config row is missing; static seed reproduces
+  `GREATEST(day_start−3000, 94000)` exactly.
+- **`db/store.py`:** `get_challenge_config()`, `get_hwm()`,
+  `update_hwm(equity)` (GREATEST upsert — monotonic by construction);
+  `record_telemetry` distances now config-derived.
+- **Consumers:** guardian (config/HWM fields, local `observe_hwm` ratchet,
+  throttle-persisted), gate (`challenge_cfg`/`hwm` params; attenuation
+  floor = tier dd-floor), engine (persisted HWM replaces the in-memory
+  `peak_equity` — **the deploy-resets-peak bug is fixed as a side
+  effect**), control-plane gate calls + `/dashboard` buffers, alert
+  formatter, web API — all nine audited sites.
+- **Deliberately unchanged (the two Step-4 decisions):** circuit breaker
+  −2.5% (hard-coded no-drift philosophy; −4% variant is a one-line
+  change) and the `risk_params` ≤ 1% CHECK (1.5% case documented in the
+  sizing study above).
+
+## Stress results (staging, real output — scripts/stress_trailing_floor.py)
+
+| Scenario | Result |
+|---|---|
+| 1 Rising (trailing 8/5, fixed day-start) | PASS — HWM ratchets 100k→112k; floor hands over from daily 95,000 to dd at HWM>103,261 and ends 103,040 (=112k×0.92), monotonic throughout |
+| 2 Rise-then-fall (peak 110k) | PASS — floor HOLDS at 101,200 through the fall; guardian SOFT-HALT at 101,650 (=floor+500, engine→PAUSED) and HARD-FLATTEN at 101,350 (=floor+200, kill sequence, engine→KILLED); HWM never moved down |
+| 2b Rewritten SQL trigger | PASS — entry with worst-case 100,600 BLOCKED at trailing floor 101,200+200; safe intent admitted |
+| 3 Choppy | PASS — no false halts, floor moved only on new highs, local ratchet 100,900 persisted on throttle |
+| 4 Restart mid-sequence | PASS — fresh process resumes HWM 100,900 from DB (GREATEST beats the lower current equity); restarted guardian floor identical |
+| 5 Static regression | PASS — floors reproduce the historical formula at three day-start levels; the historical trigger block case reproduces under the static config |
+
+Unit layer: 6 new tests in `tests/test_challenge_config.py` (static-seed
+equivalence, trailing ratchet, the 102,174 crossover, validation) —
+suite **219 passed**.
+
+## Step 4 — go/no-go package (Zane's sign-off required)
+
+Nothing below runs without explicit sign-off:
+
+1. **Deploy the parameterized code** to the live worker (`railway up`) —
+   behavior-neutral under the static seed (regression-proven).
+   Note: the live DB acquires the new tables/trigger on the next
+   `apply_schema()` run regardless (e.g. the nightly forward-test tick) —
+   also behavior-neutral by the same seed.
+2. **Decisions:** (a) breaker −2.5% keep/scale-to-−4%; (b) risk_pct cap
+   1% keep/raise-to-1.5% (schema CHECK migration ready on request).
+3. **The flip (at/after challenge activation), one transaction:**
+```sql
+BEGIN;
+UPDATE challenge_config
+   SET drawdown_type='trailing', max_drawdown_pct=8, daily_loss_pct=5,
+       initial_balance=100000, updated_at=now(), updated_by='step4_signoff'
+ WHERE id=1;
+-- CRITICAL: reset (not ratchet) the HWM to the REAL account equity at
+-- activation. Paper trading ratchets the DB HWM meanwhile (harmless under
+-- the static config, which ignores HWM), so a direct UPDATE is required
+-- here — update_hwm() deliberately cannot lower it.
+UPDATE equity_hwm SET hwm=<real account equity>, updated_at=now() WHERE id=1;
+COMMIT;
+```
+4. **Open item unchanged:** Propr's trailing recalc mechanics (continuous
+   vs interval; equity vs balance HWM) — direct question to Propr; the
+   implementation is the conservative reading (continuous, equity-based).
