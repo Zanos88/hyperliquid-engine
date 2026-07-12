@@ -94,6 +94,22 @@ def get_btc_sz_decimals(session: requests.Session | None = None) -> int:
     raise LookupError("BTC not found in Hyperliquid perpetuals meta universe")
 
 
+def fetch_l2_book(
+    coin: str,
+    session: requests.Session | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    """Live L2 order-book snapshot: {coin, time (ms), levels: [bids, asks]},
+    20 levels/side, each {px, sz, n}. LIVE-ONLY — Hyperliquid exposes no
+    free historical depth (ORDERBOOK_IMBALANCE_LAYER.md Part A), so a missed
+    snapshot is permanently unrecoverable."""
+    http = session or requests.Session()
+    resp = http.post(HYPERLIQUID_INFO_URL, json={"type": "l2Book", "coin": coin},
+                     timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def fetch_funding_history(
     coin: str,
     start_time_ms: int,

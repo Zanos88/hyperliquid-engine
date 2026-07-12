@@ -371,3 +371,26 @@ CREATE TABLE IF NOT EXISTS equity_hwm (
 );
 INSERT INTO equity_hwm (id, hwm) VALUES (1, 100000)
     ON CONFLICT (id) DO NOTHING;
+
+-- ── Order-book snapshots (interim forward logging; paper-research only) ──
+-- One row per 1H bar close, captured LIVE within 120s of the boundary
+-- (scripts/orderbook_logger.py — the contemporaneity guard is hard; a
+-- stale snapshot stamped to a boundary would corrupt the future imbalance
+-- test). Consumed later by the pre-registered order-book imbalance layer
+-- (docs/ORDERBOOK_IMBALANCE_LAYER.md — definition locked at top-10, ±0.15;
+-- raw levels are provenance, NOT a re-tuning surface).
+CREATE TABLE IF NOT EXISTS orderbook_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    bar_close_ms BIGINT NOT NULL,      -- the 1H boundary this row represents
+    coin TEXT NOT NULL DEFAULT 'BTC',
+    imbalance_top10 NUMERIC NOT NULL,  -- (bid10-ask10)/(bid10+ask10)
+    bid_vol_top10 NUMERIC NOT NULL,
+    ask_vol_top10 NUMERIC NOT NULL,
+    best_bid NUMERIC NOT NULL,
+    best_ask NUMERIC NOT NULL,
+    levels JSONB NOT NULL,             -- raw 20x2 book (provenance)
+    UNIQUE (coin, bar_close_ms)
+);
+CREATE INDEX IF NOT EXISTS idx_orderbook_snapshots_coin_bar
+    ON orderbook_snapshots (coin, bar_close_ms DESC);
