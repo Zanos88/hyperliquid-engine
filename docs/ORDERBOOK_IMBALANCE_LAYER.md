@@ -24,10 +24,31 @@ historical-data decision below, per the brief.
    account-gated (pricing page requires signup); any spend is Zane's call.
 
 **Decision gate outcome:** no usable free historical depth → Part C backtests are
-**pending the 0xArchive decision**. A live-forward alternative exists (log the
-l2Book snapshot at each future entry signal and accumulate attribution evidence
-in real time — zero cost, slow accrual) and can be built on request; it is not
-started here because the brief scopes Part C as backtests.
+**pending the 0xArchive decision** (explicitly HELD by Zane 2026-07-12 — not
+time-sensitive).
+
+## Interim forward logging — RUNNING since 2026-07-12 (zero cost)
+
+Per Zane's go-ahead: `scripts/orderbook_logger.py` captures one LIVE l2Book
+snapshot per **1H bar close** into the additive `orderbook_snapshots` table
+(top-10 imbalance + raw 20×2 levels as provenance; the ±0.15 threshold stays
+locked — raw levels are not a re-tuning surface). Hourly boundaries cover
+every track's 4H/12H/1D closes.
+
+- **Contemporaneity guard (hard):** a snapshot is written only when captured
+  ≤120s after the boundary it is stamped with; later runs skip loudly. This
+  is the brief's own requirement — verified live: a run 15 min past the
+  boundary refused to write.
+- **Scheduling:** task `btc-orderbook-logger`, hourly at hh:00:45
+  (`scripts/orderbook_tick.cmd`, log `%LOCALAPPDATA%\btc-orderbook\tick.log`).
+  **Laptop-off hours are permanent gaps** — the book is live-only, no
+  self-healing exists; the eventual Part C attribution claims only covered
+  entries (`--report` prints coverage).
+- **Consumption plan:** future entries are attributable by joining
+  `pending_signals.created_at` (the engine timestamps every Frame-A signal)
+  and the forward tracks' flip marks against snapshot boundaries; the locked
+  gate (±0.15) is then evaluated per entry with zero look-back bias, because
+  every snapshot predates the analysis by construction.
 
 ## Part B — the ONE pre-registered definition (locked now, before any data)
 

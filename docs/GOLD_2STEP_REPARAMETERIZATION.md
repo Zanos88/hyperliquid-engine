@@ -185,8 +185,18 @@ Nothing below runs without explicit sign-off:
    Note: the live DB acquires the new tables/trigger on the next
    `apply_schema()` run regardless (e.g. the nightly forward-test tick) —
    also behavior-neutral by the same seed.
-2. **Decisions:** (a) breaker −2.5% keep/scale-to-−4%; (b) risk_pct cap
-   1% keep/raise-to-1.5% (schema CHECK migration ready on request).
+2. **Decisions (pre-recorded 2026-07-12):** (a) breaker **stays −2.5%**
+   (Zane's call, final); (b) risk_pct cap — delegated; recommendation:
+   **keep 1% for the first live phase** (the 1.5% case rests on an n=8
+   drawdown basis, too thin to spend a safety-CHECK relaxation on;
+   revisit at ≥3 months of live dry-run data or ≥30 trades, whichever
+   first). (c) **HWM-reset precondition SATISFIED:** the exact flip
+   transaction below is rehearsed by stress scenario 6
+   (`scripts/stress_trailing_floor.py`) — paper-inflated HWM 105k, flip +
+   direct reset to 100k, floors recompute from the reset base, ratchet
+   integrity (cannot-lower) survives, post-flip guardian reads correct
+   floors — ALL PASS on staging, 2026-07-12. **Step-4 deploy + flip
+   remain HELD per Zane — nothing time-sensitive.**
 3. **The flip (at/after challenge activation), one transaction:**
 ```sql
 BEGIN;
