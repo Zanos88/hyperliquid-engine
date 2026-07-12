@@ -7,14 +7,14 @@ three other let-winners-run rules; the 4H bias-flip stays the catastrophe brake
 under every model. Entries are the SAME 8 the +2.86R baseline produced
 (reused via backtest.run_backtest on frozen snapshots — zero reimplementation).
 
-5 exit models × 4 scenarios (long-only/both × single/concurrent, cap 3) = 20
-runs, all reported. Combinations are DEFERRED (multiple-comparisons discipline
-on fixed n). Per-entry exit outcomes are scenario-independent, so we simulate
-each entry once per model (40 sims) and the scenarios select/gate subsets.
+5 exit models × 6 scenarios (long-only/short-only/both × single/concurrent,
+cap 3) = 30 runs, all reported. Combinations are DEFERRED (multiple-comparisons
+discipline on fixed n). Per-entry exit outcomes are scenario-independent, so we
+simulate each entry once per model (40 sims) and the scenarios select/gate subsets.
 
-Load-bearing caveat: the 8 entries are 7 SHORT + 1 LONG, so the two long-only
-scenarios are n=1 — descriptive only, not a test. The both-directions scenarios
-(n=8) carry the content.
+Load-bearing caveat: the 8 entries are 7 SHORT + 1 LONG. Long-only scenarios are
+n=1 (descriptive only, NOT a test); short-only (n=7) is where the real content
+lives — both-directions is ~a short-side test already (7 of 8 trades).
 
 Usage (from repo root):
     python scripts/trend_let_winners_run.py --selfcheck
@@ -54,8 +54,10 @@ PRIOR_FIRST_PROFIT_NET_R = 5.70   # trend_no_stop.py both-directions ungated sum
 BASELINE_DOC = {"trades": 8, "w_l": "4-4", "net_r": 2.86, "profit_factor": 1.43,
                 "max_drawdown_r": 3.72}
 
-SCENARIOS = [("long_single", "long", False), ("both_single", "both", False),
-             ("long_concurrent", "long", True), ("both_concurrent", "both", True)]
+SCENARIOS = [("long_single", "long", False), ("short_single", "short", False),
+             ("both_single", "both", False),
+             ("long_concurrent", "long", True), ("short_concurrent", "short", True),
+             ("both_concurrent", "both", True)]
 
 
 def _pctl(v, q):
@@ -197,8 +199,10 @@ def phase_run() -> None:
           f"{stopped['wins']}-{stopped['losses']} | net {stopped['net_r']:+.2f}R "
           f"| PF {round(stopped['profit_factor'], 2)} | maxDD {stopped['max_drawdown_r']:.2f}R "
           f"(doc +2.86R) | dir split: {n_long} LONG / {len(stopped_trades) - n_long} SHORT")
+    n_short = len(stopped_trades) - n_long
     if n_long <= 1:
-        print(f"  ** long-only scenarios are n={n_long} — descriptive only, NOT a test **")
+        print(f"  ** long-only scenarios are n={n_long} (descriptive only, NOT a test); "
+              f"short-only n={n_short} carries the content **")
 
     # 2. Per-entry outcome under each model (scenario-independent). 40 sims.
     bias4h, sr4h = precompute_series(candles_4h)
@@ -245,13 +249,13 @@ def phase_run() -> None:
 
     # 4. The 20 cells.
     cells = {}
-    print("\n=== 20-RUN MATRIX (model × scenario) ===")
+    print("\n=== 30-RUN MATRIX (model × scenario) ===")
     print(f"{'model':<24}{'scenario':<18}{'n':>3} {'net R':>8} {'wins':>5} "
           f"{'wMAE%':>7} {'wMAE R':>7} {'maxConc':>8} exits")
     for m in NO_STOP_EXIT_MODELS:
         for sc_name, direction, concurrent in SCENARIOS:
             pool = [e for e in per_entry[m]
-                    if direction == "both" or e["is_long"]]
+                    if direction == "both" or e["is_long"] == (direction == "long")]
             pool = sorted(pool, key=lambda e: e["entry_index"])
             admitted, sk_cap, sk_single, util = gate(pool, concurrent)
             cell = summarize_cell(admitted, concurrent, candles_1h, (sk_cap, sk_single, util))
