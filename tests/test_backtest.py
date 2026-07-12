@@ -16,7 +16,7 @@ from backtest import (
     simulate_outcome,
 )
 from data.feed import Candle
-from strategy.bias_4h import Bias
+from strategy.bias_4h import Bias, BiasResult, SRLevel
 from strategy.signals import Signal, SignalDirection
 
 NOW = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
@@ -329,6 +329,86 @@ def test_patient_hold_requires_bias_series():
     with pytest.raises(ValueError):
         simulate_outcome([candle(0, 100, 101, 99, 100), candle(1, 100, 103, 98, 101)],
                          0, long_signal(), patient_hold_exit=True)
+
+
+# ── let-winners-run exit models (no-stop family) ──
+
+def _br(resistances=(), supports=()):
+    levels = [SRLevel(price=p, kind="resistance") for p in resistances] \
+        + [SRLevel(price=p, kind="support") for p in supports]
+    return BiasResult(Bias.BULLISH, None, {}, levels, "t")
+
+
+def test_fib_target_exit_holds_through_stop_then_takes_target():
+    # Long @100 (stop 95, target 110). Bar 1 wicks below the stop; held. Bar 2
+    # touches the fib target -> exit AT the target, not first profit.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 96, 97, 90, 96),           # low 90 < stop 95, held
+               candle(2, 96, 112, 99, 108)]         # high 112 >= target 110
+    bias = _bull_series(0, 1, 2, 3)
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=110.0),
+                         patient_hold_exit=True, bias4h_series=bias, exit_model="fib_target")
+    assert t.exit_reason == "fib_target"
+    assert t.gross_r == pytest.approx(2.0)           # (110-100)/5, exit at the target
+    assert t.mae_frac == pytest.approx(-0.10)        # the wick to 90 is held through
+
+
+def test_resistance_rejection_fires_on_reject_not_on_close_through():
+    sr = [(h * H, _br(resistances=(110.0,))) for h in range(5)]
+    bias = _bull_series(0, 1, 2, 3, 4)
+    sig = long_signal(entry=100.0, stop=95.0, target=200.0)  # target far, never hit
+    # rejection: high touches 110, close fails back below -> exit at close
+    rej = [candle(0, 100, 101, 99, 100), candle(1, 100, 111, 99, 108)]
+    t = simulate_outcome(rej, 0, sig, patient_hold_exit=True, bias4h_series=bias,
+                         exit_model="resistance_rejection", sr4h_series=sr)
+    assert t.exit_reason == "resistance_rejection" and t.bars_held == 1
+    # close-through: bar closes ABOVE 110 -> no rejection; only resistance is now
+    # below price so none remains -> runs to unresolved
+    through = [candle(0, 100, 101, 99, 100), candle(1, 100, 113, 99, 112)]
+    t2 = simulate_outcome(through, 0, sig, patient_hold_exit=True, bias4h_series=bias,
+                          exit_model="resistance_rejection", sr4h_series=sr)
+    assert t2.exit_reason == "unresolved"
+
+
+def test_min_move_first_profit_gate_blocks_early_exit():
+    # risk 5 -> 1R = +5% favorable (high>=105) required before first-profit arms.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 100, 104, 99, 103),        # profitable close but only +4% high -> gated
+               candle(2, 103, 106, 102, 101)]       # high 106 >= 105 arms, close 101 profitable
+    bias = _bull_series(0, 1, 2, 3)
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=200.0),
+                         patient_hold_exit=True, bias4h_series=bias,
+                         exit_model="min_move_first_profit", min_move_r=1.0)
+    assert t.exit_reason == "min_move_profit" and t.bars_held == 2
+
+
+def test_trailing_once_profitable_arms_then_trails():
+    # risk 5 -> arm at +5% (high>=105); trail 1R (=5) behind best.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 100, 106, 100, 105),       # arms (high 106); no exit on the arming bar
+               candle(2, 105, 106, 100, 101)]        # best 106 -> trail 101; low 100 <= 101 -> hit
+    bias = _bull_series(0, 1, 2, 3)
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=200.0),
+                         patient_hold_exit=True, bias4h_series=bias,
+                         exit_model="trailing_once_profitable", trail_arm_r=1.0, trail_dist_r=1.0)
+    assert t.exit_reason == "trailing_stop" and t.bars_held == 2
+    assert t.gross_r == pytest.approx(0.2)           # (101-100)/5, exit at the trail
+
+
+def test_brake_still_fires_under_a_non_first_profit_model():
+    # fib_target model, target never reached, bias flips -> brake exits.
+    candles = [candle(0, 100, 101, 99, 100), candle(1, 99, 100, 98, 99)]
+    bias = [(0, Bias.BULLISH), (H, Bias.BULLISH), (2 * H, Bias.BEARISH)]
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=200.0),
+                         patient_hold_exit=True, bias4h_series=bias, exit_model="fib_target")
+    assert t.exit_reason == "bias_flip"
+
+
+def test_unknown_exit_model_rejected():
+    with pytest.raises(ValueError):
+        simulate_outcome([candle(0, 100, 101, 99, 100), candle(1, 100, 103, 98, 101)],
+                         0, long_signal(), patient_hold_exit=True,
+                         bias4h_series=_bull_series(0, 1, 2), exit_model="moonshot")
 
 
 # ── return statistics (real data replaces the rejected external table) ──

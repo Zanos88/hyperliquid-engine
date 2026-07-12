@@ -63,12 +63,17 @@ from strategy.fisher_cycle import (
     macro_broken,
     opening_direction,
 )
-from strategy.bias_4h import Bias, compute_bias
+from strategy.bias_4h import Bias, BiasResult, compute_bias
+from strategy.signals import _nearest_resistance, _nearest_support
 from strategy.atr import wilder_atr
 from strategy.timeframes import LOOKBACK_BARS, interval_seconds, validate_combo
 from strategy.trigger_1h import fisher_transform
 
 TAKER_FEE = 0.00075  # per side, verified in RESEARCH_FINDINGS Rev 3
+# No-stop (spot-accumulation) favorable-exit models. The 4H bias-flip brake is
+# NOT one of these — it is the standing catastrophe floor under every model.
+NO_STOP_EXIT_MODELS = ("first_profit", "fib_target", "resistance_rejection",
+                       "min_move_first_profit", "trailing_once_profitable")
 WARMUP_TRIGGER_BARS = 40      # fisher(10) + obv sma(20) + atr(14) + margin
 STANDDOWN_WINDOW_MS = 30 * 24 * 3600 * 1000  # trailing window for funding pctile / OI z
 FUNDING_SNAPSHOT_PATH = os.path.join(os.path.dirname(__file__),
@@ -115,26 +120,47 @@ class TradeResult:
     mae_r: float | None = None
 
 
-def _simulate_patient_hold(candles: list[Candle], entry_index: int, signal: Signal,
+def _simulate_no_stop_exit(candles: list[Candle], entry_index: int, signal: Signal,
                            is_long: bool, risk: float, entry_ts: datetime,
-                           bias4h_series: list[tuple[int, Bias]] | None) -> TradeResult:
-    """No-stop patient-hold exit (BACKTEST-ONLY, spot-capital accumulation —
-    NOT comp/Propr). The structural stop is NEVER placed: it only fixed R:R
-    eligibility and sizing at entry, so `risk = |entry - stop|` is used here
-    purely to express P&L and MAE in R against that never-placed stop.
+                           bias4h_series: list[tuple[int, Bias]] | None,
+                           exit_model: str = "first_profit",
+                           sr4h_series: list[tuple[int, BiasResult]] | None = None,
+                           min_move_r: float = 1.0, trail_arm_r: float = 1.0,
+                           trail_dist_r: float = 1.0) -> TradeResult:
+    """No-stop exit family (BACKTEST-ONLY, spot-capital accumulation — NOT
+    comp/Propr). The structural stop is NEVER placed: `risk = |entry - stop|`
+    only expresses P&L and MAE in R against that never-placed stop. The 4H
+    bias-flip is the standing catastrophe brake under EVERY model (`bias_flip`;
+    NEUTRAL counts as invalidation, per Track 3's `macro_broken`).
 
-    Exit at a bar CLOSE on the FIRST net-profitable close (`reversion`,
-    mirroring Track 4's first-profit rule), else when the 4H bias flips off
-    the trade's direction (`bias_flip`; NEUTRAL counts as invalidation, per
-    Track 3's `macro_broken`). Deepest adverse excursion (MAE) is tracked
-    intrabar (long: lows, short: highs) and reported with P&L-equal
-    prominence. Runs out of data -> `unresolved` (excluded from win/loss)."""
+    Favorable exit per `exit_model`:
+      first_profit             first net-profitable CLOSE (`reversion`)
+      fib_target               touch of the entry's fib-extension target
+      resistance_rejection     touch nearest structural R/S that fails to close
+                               beyond it (real rejection); closing through runs on
+      min_move_first_profit    first_profit, but only after >= min_move_r R favorable
+      trailing_once_profitable trail trail_dist_r R behind the best price, armed
+                               once >= trail_arm_r R favorable (pre-arm: brake only)
+
+    Deepest adverse excursion (MAE) is tracked intrabar (long: lows, short:
+    highs) and reported in % and R with P&L-equal prominence. A favorable exit
+    takes precedence over the brake within a bar. Runs out of data ->
+    `unresolved` (excluded from win/loss)."""
     if bias4h_series is None:
-        raise ValueError("patient_hold_exit requires bias4h_series")
+        raise ValueError("no-stop exit requires bias4h_series")
+    if exit_model not in NO_STOP_EXIT_MODELS:
+        raise ValueError(f"unknown exit_model {exit_model!r} — allowed: {NO_STOP_EXIT_MODELS}")
+    if exit_model == "resistance_rejection" and sr4h_series is None:
+        raise ValueError("resistance_rejection requires sr4h_series")
     opened_bias = Bias.BULLISH if is_long else Bias.BEARISH
     bias_times = [t for t, _ in bias4h_series]
+    sr_times = [t for t, _ in sr4h_series] if sr4h_series else []
     sign = 1 if is_long else -1
-    worst_frac = 0.0  # most-negative adverse excursion, as a fraction of entry
+    r_frac = risk / signal.entry if signal.entry else 0.0   # 1R as a fraction of entry
+    worst_frac = 0.0            # most-negative adverse excursion (fraction of entry)
+    best_fav = 0.0             # max favorable excursion (fraction of entry)
+    best_price = signal.entry  # extreme in favor, for trailing
+    armed = False
 
     def _mae_r() -> float | None:
         return (worst_frac * signal.entry / risk) if risk else None
@@ -156,13 +182,50 @@ def _simulate_patient_hold(candles: list[Candle], entry_index: int, signal: Sign
         adverse = ((c.low - signal.entry) / signal.entry if is_long
                    else (signal.entry - c.high) / signal.entry)
         worst_frac = min(worst_frac, adverse)
-        # (a) first net-profitable close -> banked (reversion)
-        gross = sign * (c.close - signal.entry) / signal.entry
-        if gross - 2 * TAKER_FEE > 0:
-            return _result(j, c.close, "reversion")
-        # (b) else 4H bias flipped off the trade's direction -> force-flatten
-        idx = bisect_right(bias_times, c.close_time_ms) - 1
-        if idx >= 0 and bias4h_series[idx][1] != opened_bias:
+        fav = ((c.high - signal.entry) / signal.entry if is_long
+               else (signal.entry - c.low) / signal.entry)
+        best_fav = max(best_fav, fav)
+
+        # ── favorable exit (model-specific; precedence over the brake) ──
+        if exit_model in ("first_profit", "min_move_first_profit"):
+            if (exit_model == "min_move_first_profit" and not armed
+                    and r_frac and best_fav >= min_move_r * r_frac):
+                armed = True
+            ready = exit_model == "first_profit" or armed
+            if ready and sign * (c.close - signal.entry) / signal.entry - 2 * TAKER_FEE > 0:
+                return _result(j, c.close,
+                               "reversion" if exit_model == "first_profit" else "min_move_profit")
+        elif exit_model == "fib_target":
+            tgt = signal.target
+            if tgt is not None and ((c.high >= tgt) if is_long else (c.low <= tgt)):
+                return _result(j, tgt, "fib_target")
+        elif exit_model == "resistance_rejection":
+            si = bisect_right(sr_times, c.close_time_ms) - 1
+            if si >= 0:
+                br = sr4h_series[si][1]
+                prev_close = candles[j - 1].close
+                if is_long:
+                    lvl = _nearest_resistance(br, prev_close)
+                    if lvl is not None and c.high >= lvl and c.close < lvl:
+                        return _result(j, c.close, "resistance_rejection")
+                else:
+                    lvl = _nearest_support(br, prev_close)
+                    if lvl is not None and c.low <= lvl and c.close > lvl:
+                        return _result(j, c.close, "resistance_rejection")
+        elif exit_model == "trailing_once_profitable":
+            if armed:
+                trail = (best_price - trail_dist_r * risk if is_long
+                         else best_price + trail_dist_r * risk)
+                if (c.low <= trail) if is_long else (c.high >= trail):
+                    return _result(j, trail, "trailing_stop")
+            elif r_frac and best_fav >= trail_arm_r * r_frac:
+                armed = True                       # takes effect from the next bar
+        # update the favorable extreme AFTER the hit check (arming bar sets the base)
+        best_price = max(best_price, c.high) if is_long else min(best_price, c.low)
+
+        # ── catastrophe brake: 4H bias flipped off the trade's direction ──
+        bi = bisect_right(bias_times, c.close_time_ms) - 1
+        if bi >= 0 and bias4h_series[bi][1] != opened_bias:
             return _result(j, c.close, "bias_flip")
 
     return TradeResult(
@@ -183,6 +246,11 @@ def simulate_outcome(
     exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
     patient_hold_exit: bool = False,
     bias4h_series: list[tuple[int, Bias]] | None = None,
+    exit_model: str = "first_profit",
+    sr4h_series: list[tuple[int, BiasResult]] | None = None,
+    min_move_r: float = 1.0,
+    trail_arm_r: float = 1.0,
+    trail_dist_r: float = 1.0,
 ) -> TradeResult:
     """Walk candles AFTER entry until stop or target is TOUCHED (high/low,
     not close). Both touched in one candle -> stop first (conservative).
@@ -205,8 +273,10 @@ def simulate_outcome(
     entry_ts = datetime.fromtimestamp(candles[entry_index].close_time_ms / 1000, tz=timezone.utc)
 
     if patient_hold_exit:
-        return _simulate_patient_hold(candles, entry_index, signal, is_long, risk,
-                                      entry_ts, bias4h_series)
+        return _simulate_no_stop_exit(candles, entry_index, signal, is_long, risk,
+                                      entry_ts, bias4h_series, exit_model=exit_model,
+                                      sr4h_series=sr4h_series, min_move_r=min_move_r,
+                                      trail_arm_r=trail_arm_r, trail_dist_r=trail_dist_r)
 
     def _in_favor(f: float) -> bool:
         return f >= exhaustion_threshold if is_long else f <= -exhaustion_threshold
