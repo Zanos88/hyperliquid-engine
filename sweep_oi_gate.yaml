@@ -1,9 +1,11 @@
 # Grid D — trend-exhaustion stand-down gate (OI×liquidation research Phase 1).
-# Pre-registered in docs/OI_LIQUIDATION_PHASE0_PHASE1.md. Funding-only pass:
-# OI history is requester-pays-gated (Phase 0 §0.2), so the oi_z conjunction
-# variants run later when a source is unlocked. Baselines (standdown off)
-# must reproduce the stored V2.3 Grid C cells for the same configs.
-sweep_name: grid_d_standdown_funding_only
+# Pre-registered in docs/OI_LIQUIDATION_PHASE0_PHASE1.md. Now includes the
+# funding∧OI conjunction (oi_z_mins) — completed 2026-07-12 once a Coinalyze
+# OI source was wired (research/data/BTC_oi_history.json). Coverage caveat:
+# Coinalyze free-tier OI reaches back only ~84 days (2026-04-19+), so the
+# conjunction declines to fire on any bar predating coverage — every
+# funding-suppressed entry from the original run is earlier than that.
+sweep_name: grid_d_standdown_funding_and_oi
 grids:
   - name: grid_d
     tf_pairs:
@@ -16,3 +18,4 @@ grids:
     standdown:
       - {entry: false}
       - {entry: true, funding_pctiles: [85, 90]}
+      - {entry: true, funding_pctiles: [85, 90], oi_z_mins: [1.5, 2.0]}

@@ -23,9 +23,9 @@ def test_oi_conjunction():
     # Crowded funding but OI z below the floor -> pass (conjunction).
     assert standdown_suppresses(SignalDirection.LONG, 95.0, 85.0, oi_z=1.0, oi_z_min=2.0) is False
     assert standdown_suppresses(SignalDirection.LONG, 95.0, 85.0, oi_z=2.5, oi_z_min=2.0) is True
-    # OI required but missing -> loud failure, never silent.
-    with pytest.raises(ValueError):
-        standdown_suppresses(SignalDirection.LONG, 95.0, 85.0, oi_z=None, oi_z_min=2.0)
+    # OI required but unavailable for this bar -> do NOT stand down (a
+    # stand-down acts only on confirmed evidence, never a missing input).
+    assert standdown_suppresses(SignalDirection.LONG, 95.0, 85.0, oi_z=None, oi_z_min=2.0) is False
 
 
 def test_expand_sweep_standdown_axis():

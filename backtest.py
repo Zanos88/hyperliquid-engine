@@ -96,6 +96,22 @@ def load_funding_series(now_ms: int) -> list[tuple[int, float]]:
     with open(FUNDING_SNAPSHOT_PATH, "w", encoding="utf-8") as f:
         json.dump(doc, f)
     return rows
+
+
+OI_SNAPSHOT_PATH = os.path.join(os.path.dirname(__file__),
+                                "research", "data", "BTC_oi_history.json")
+
+
+def load_oi_series() -> list[tuple[int, float]] | None:
+    """Frozen OI history (Coinalyze, hourly) for the stand-down conjunction,
+    or None when no snapshot exists. Coverage is limited by the source's
+    free-tier retention — see docs/OI_LIQUIDATION_PHASE0_PHASE1.md; bars
+    outside coverage get oi_z=None and the conjunction declines to fire."""
+    if not os.path.exists(OI_SNAPSHOT_PATH):
+        return None
+    with open(OI_SNAPSHOT_PATH, encoding="utf-8") as f:
+        doc = json.load(f)
+    return [(int(t), float(v)) for t, v in doc["rows"]]
 WARMUP_BIAS_BARS = 120        # fractal/S-R structure + ichimoku(52+disp)
 
 
@@ -887,6 +903,7 @@ def run_single(args) -> None:
                       else fetch_candles("BTC", "4h", now_ms - span("4h"), now_ms))
 
     funding_series = load_funding_series(now_ms) if args.standdown_entry else None
+    oi_series = load_oi_series() if (args.standdown_entry and args.oi_z_min is not None) else None
 
     summary = run_backtest(bias_candles, trigger_candles, config, args.ichimoku_variant,
                            stop_model=args.stop_model, atr_multiplier=args.atr_multiplier,
@@ -898,6 +915,7 @@ def run_single(args) -> None:
                            standdown_entry=args.standdown_entry,
                            funding_series=funding_series,
                            funding_pctile_threshold=args.funding_pctile,
+                           oi_series=oi_series,
                            oi_z_min=args.oi_z_min)
     trades = summary.pop("trades")
 
@@ -1071,6 +1089,15 @@ def run_sweep(args) -> None:
         f0 = datetime.fromtimestamp(funding_series[0][0] / 1000, tz=timezone.utc)
         f1 = datetime.fromtimestamp(funding_series[-1][0] / 1000, tz=timezone.utc)
         print(f"  funding series: {len(funding_series)} hourly rows ({f0:%Y-%m-%d} -> {f1:%Y-%m-%d})")
+    oi_series = (load_oi_series()
+                 if any(c.get("standdown_entry") and c.get("oi_z_min") is not None for c in combos)
+                 else None)
+    if oi_series:
+        from datetime import datetime, timezone
+        o0 = datetime.fromtimestamp(oi_series[0][0] / 1000, tz=timezone.utc)
+        o1 = datetime.fromtimestamp(oi_series[-1][0] / 1000, tz=timezone.utc)
+        print(f"  OI series: {len(oi_series)} hourly rows ({o0:%Y-%m-%d} -> {o1:%Y-%m-%d}) "
+              f"— conjunction declines to fire on bars before {o0:%Y-%m-%d}+30d")
     unique_tfs = sorted(unique_tfs, key=interval_seconds)
     candles: dict[str, list[Candle]] = {}
     for tf in unique_tfs:
@@ -1101,6 +1128,7 @@ def run_sweep(args) -> None:
             standdown_entry=combo["standdown_entry"],
             funding_series=funding_series if combo["standdown_entry"] else None,
             funding_pctile_threshold=combo["funding_pctile"] or 85.0,
+            oi_series=oi_series if combo["oi_z_min"] is not None else None,
             oi_z_min=combo["oi_z_min"],
         )
         trades = summary["trades"]

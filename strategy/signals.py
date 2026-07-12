@@ -279,8 +279,12 @@ def standdown_suppresses(direction, funding_pctile: float, threshold: float,
     if not crowded:
         return False
     if oi_z_min is not None:
+        # Conjunction requires BOTH legs CONFIRMED. When OI is unavailable
+        # for this bar (e.g. the bar predates OI-history coverage) the
+        # leverage leg cannot be confirmed, so we do NOT stand down — a
+        # stand-down acts only on evidence, never on a missing input.
         if oi_z is None:
-            raise ValueError("oi_z_min set but oi_z_value missing")
+            return False
         return oi_z >= oi_z_min
     return True
 

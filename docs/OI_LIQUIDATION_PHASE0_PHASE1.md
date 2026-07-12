@@ -164,8 +164,48 @@ windows.
    point for whether this research program gets its expensive
    infrastructure.
 
+## OI conjunction completed — 2026-07-12 (Coinalyze + 0xArchive keys wired)
+
+Both data sources from the held decisions were provisioned (free/existing
+keys, read-only, Railway env vars `COINALYZE_API_KEY` / `ZEROX_ARCHIVE_API_KEY`).
+
+**Coinalyze OI (Track 3):** BTC perp OI (Hyperliquid, `BTCUSDT.6`), hourly,
+frozen to `research/data/BTC_oi_history.json`. **Real retention is the
+decisive fact: ~84 days only — 2026-04-19 → 2026-07-12** (a 400-day request
+returned 84 days). The `oi_series` loader + graceful degrade (bars without
+OI → conjunction declines to fire, never raises) are now wired into the
+sweep; `sweep_oi_gate.yaml` gains the `oi_z_mins: [1.5, 2.0]` conjunction
+variants.
+
+**Result (sweep `01KXB8VVV41J6QDPQZREQHWQX8`, 14 runs, no-store):** the
+funding∧OI conjunction cells (`F85+Z1.5` … `F90+Z2.0`) suppress **0 entries
+on both TF pairs — identical to the gate-OFF baseline** (4h/1h +2.86R;
+1d/4h −5.52R). Reason, confirmed from the data: **every funding-crowded
+suppression bar predates OI coverage.** The funding gate bound on
+2026-03-19 (4h/1h) and 2024-09/2025-04 (1d/4h); usable OI begins 2026-05-19
+(coverage + 30-day z-score warm-up). So the OI leg cannot be confirmed on a
+single relevant entry → the conjunction is a no-op here. Funding-only rows
+reproduce exactly (1 and 2 suppressions), confirming no regression.
+
+**Verdict (unchanged, now concretely explained):** the funding∧OI
+conjunction is **untestable on the relevant sample with free-tier OI** —
+not "n≤2 and uninformative" but "n=0, coverage gap." Testing it properly
+needs OI back to ≥2025-12 (4h/1h) — a paid Coinalyze tier or the
+Hyperliquid S3 `asset_ctxs` archive (requester-pays), neither justified for
+a hypothesis whose real home is Phase 2. **Completeness pull done; no
+change to the "do not adopt the stand-down gate" recommendation.**
+
+**0xArchive Part A (Track 2), free tier:** connectivity confirmed
+(`X-API-Key`, `api.0xarchive.io`); BTC liquidation events return rich
+per-event data (timestamp, size, side, closed_pnl, direction, tx_hash) —
+the exact tick data Phase 2's cascade-fade needs. **But the free tier is a
+trailing 90-day window**, not the full Dec-2025+ archive (that needs
+Build/Pro, held). Sufficient for a Phase 2 *pilot* on recent data;
+insufficient for the full-history event study. No spend beyond free tier.
+
 ## Commits
 
-1. `research: OI/funding + liquidation data availability check (Phase 0)` (this commit)
+1. `research: OI/funding + liquidation data availability check (Phase 0)`
 2. `feat: trend-exhaustion funding/OI stand-down gate (Phase 1 wiring)`
 3. `docs: phase 0+1 results, real numbers only`
+4. `research: OI conjunction completed via Coinalyze (2026-07-12) — n=0, coverage gap`
