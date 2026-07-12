@@ -113,3 +113,73 @@ calendar and the same macro cycles — **not 6 independent instances.**
   record**, so **every Part D bear-regime verdict is *insufficient-data* by
   construction** — a property of the locked definition, reported not patched.
 
+## Part D — retroactive regime split (blind, block-boot + DSR)
+
+Locked labels applied to strategies already tested. The **regime filter is an
+added degree of freedom, counted in the DSR trials** (tournament: 7 variants × 3
+regimes = 21). Block-boot 3000 reps, ppy 365. `research/output/regime_split.json`.
+
+### Trend tournament (BTC 1d, per-bar block-boot + DSR) — the primary test
+
+| Regime | n bars | family luck bar | best variant Sharpe | DSR | clears bar? |
+|---|---|---|---|---|---|
+| BULL | 405 | **+4.16** | sma50 **+3.00** | 0.90 | **no** |
+| BEAR | 210 | +4.23 | sma50 +1.97 | 0.34 | no |
+| NEUTRAL | 1534 | +0.95 | sma100 +0.37 | 0.12 | no |
+
+**Verdict: regime-dependent in raw Sharpe, but the dependence does NOT cross into
+significance.** Trend genuinely does better in the bull regime (best Sharpe 3.00
+vs 0.37 in neutral) — but **no variant clears its within-regime luck bar in any
+regime, bull included.** The reason is the honest one: conditioning on bull
+raises the observed Sharpe *and* the family-max luck bar together (bull returns
+are trendier, so the null family-max is higher too, 4.16), and the observed still
+falls short; DSR < 0.95 everywhere. **Conditioning on a properly-defined bull
+regime does not manufacture a provable trend edge** — the direct answer to the
+S-B-motivated question. Capped at **SUGGESTIVE** by the Part C gate (only ~2
+independent bull cycles); not proven.
+
+### S-B breakout (4h, no-stop hold-to-profit) — 75 trades
+
+| Regime | n | wins | net %notional | worst MAE |
+|---|---|---|---|---|
+| BULL | 14 | 14 | +13.19% | −4.15% |
+| BEAR | 13 | 13 | +9.60% | **−27.74%** |
+| NEUTRAL | 48 | 47 | +29.92% | −11.60% |
+
+Net-positive in every regime — but that is the **~100% win-rate artifact** of the
+no-stop hold-to-profit exit (the Track-4 family property), not an edge. The
+honest regime signal is in the **tail: worst MAE −27.74% in BEAR** vs −4.15% in
+BULL. The breakout's *danger* is regime-dependent (failed breakouts revert
+hardest in bear) — consistent with S-B's original bull-beta finding, now with the
+bear tail exposed. **Descriptive** (per-regime n=13–48); no luck bar cleared.
+
+### Track 4 −1.25 (4h mean-reversion) — 17 trades
+
+| Regime | n | net %notional | worst MAE | verdict |
+|---|---|---|---|---|
+| BULL | 2 | +1.22% | −2.65% | insufficient-data |
+| BEAR | 2 | +0.54% | −0.58% | insufficient-data |
+| NEUTRAL | 13 | +4.89% | **−16.53%** | descriptive |
+
+**Overwhelmingly a NEUTRAL-regime phenomenon** (13 of 17 trades; its worst
+hostage, −16.53%, is in neutral). Bull/bear n=2 each → insufficient-data.
+Consistent with what Track 4 *is* — a chop/dip-buy mean-reversion trade, not a
+trend strategy, so it fires in neutral markets, not directional regimes.
+
+## Verdicts (per strategy, unhedged)
+
+- **Trend tournament — regime-dependent but sub-significant.** Real bull
+  out-performance (Sharpe 3.0 vs 0.37) that still fails the within-regime luck
+  bar in every regime with DSR < 0.95 throughout. The bull-regime hypothesis is
+  **SUGGESTIVE at best, not proven**, gated by only ~2 independent bull cycles.
+  Bull-conditioning does not rescue trend into an edge.
+- **S-B breakout — regime-dependent in tail risk, not in a provable edge.** Worst
+  drawdown concentrated in bear (−27.7%); net is the no-stop win-rate artifact.
+- **Track 4 −1.25 — insufficient-data for regime dependence; a neutral-regime
+  strategy by nature** (bull/bear n=2).
+- **Framework-level:** the classifier did *not* reveal a hidden regime-conditional
+  edge. It worked as a discipline check — a locked definition that finds ~2 bull
+  cycles and ~0 bear, and shows that even generous bull-conditioning leaves trend
+  short of significance. The honest answer to "does trend/breakout work
+  conditional on a bull regime?" is **not provably, on this data.**
+

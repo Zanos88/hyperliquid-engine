@@ -243,6 +243,132 @@ def phase_instances() -> None:
     print(f"written: {OUTPUT_DIR / 'regime_instances.json'}")
 
 
+REPS_D = 3000                  # block-boot reps for Part D (3 regime family bars)
+MIN_REGIME_BARS = 30           # tournament: min in-regime bars to compute a cell
+MIN_REGIME_TRADES = 10         # trade strategies: min per-regime trades to judge
+REGIMES = ("BULL", "BEAR", "NEUTRAL")
+N_TRIALS_TOURNAMENT = 21       # 7 variants × 3 regimes (regime filter counted as DoF)
+
+
+def _apply_tournament(candles, labels) -> dict:
+    from strategy_tournament import STRATEGIES, log_returns, net_strategy_returns
+    from blockstats import annualized_sharpe, block_bootstrap_family_bar, deflated_sharpe_ratio
+    rets = log_returns(candles)
+    lab = [r["label"] for r in labels]
+    pos_by = {name: fn(candles) for name, fn in STRATEGIES.items()}
+    net_by = {name: net_strategy_returns(pos_by[name], rets) for name in STRATEGIES}
+    out = {}
+    for reg in REGIMES:
+        idx = [j for j in range(1, len(candles)) if lab[j] == reg]
+        if len(idx) < MIN_REGIME_BARS:
+            out[reg] = {"n_bars": len(idx), "verdict": "insufficient-data"}
+            continue
+        r_reg = [rets[j] for j in idx]
+        fam = [[pos_by[name][j - 1] for j in idx] for name in STRATEGIES]
+        bar = block_bootstrap_family_bar(r_reg, fam, 365.0, 20.0, reps=REPS_D)["bar"]
+        variants = {}
+        for name in STRATEGIES:
+            net_reg = [net_by[name][j] for j in idx]
+            sr = annualized_sharpe(net_reg, 365.0)
+            dsr = deflated_sharpe_ratio(sr, net_reg, 365.0, N_TRIALS_TOURNAMENT)
+            variants[name] = {"sharpe": round(sr, 3), "dsr": round(dsr, 3),
+                              "clears_family_bar": sr > bar}
+        any_clear = any(v["clears_family_bar"] and v["dsr"] >= 0.95 for v in variants.values())
+        out[reg] = {"n_bars": len(idx), "family_bar": round(bar, 3),
+                    "any_variant_clears_and_dsr": any_clear, "variants": variants}
+    return out
+
+
+def _split_trades(trades, regime_by_date):
+    split = {reg: [] for reg in REGIMES}
+    for t in trades:
+        d = t["entry_ts"][:10]
+        split.setdefault(regime_by_date.get(d, "NEUTRAL"), []).append(t)
+    return split
+
+
+def _summ_trades(ts, gated) -> dict:
+    if not ts:
+        return {"n": 0, "verdict": "insufficient-data"}
+    nets = [t["net_pct"] for t in ts]
+    maes = [t.get("mae", 0.0) * 100 for t in ts]
+    return {"n": len(ts), "wins": sum(1 for x in nets if x > 0),
+            "sum_net_pct": round(sum(nets), 2),
+            "worst_mae_pct": round(min(maes), 2) if maes else None,
+            "verdict": "insufficient-data" if gated else "descriptive"}
+
+
+def _apply_track4(regime_by_date) -> dict:
+    from track4_mean_reversion import run_config, bias_direction_series
+    from strategy.trigger_1h import fisher_transform
+    c4h, _ = load_snapshot("4h")
+    fisher = fisher_transform(c4h)[0]
+    bc, _ = load_snapshot("12h")
+    dirs, times = bias_direction_series(bc, 30)
+    trades = run_config(c4h, fisher, dirs, times, 1.25, None,
+                        long_only=True, exit_mode="first_profit")
+    split = _split_trades(trades, regime_by_date)
+    return {"config": "4h Fisher<=-1.25, 12h SMA30 bias, long-only, no-stop, first-profit",
+            "total_trades": len(trades),
+            "by_regime": {reg: _summ_trades(split[reg], len(split[reg]) < MIN_REGIME_TRADES)
+                          for reg in REGIMES}}
+
+
+def _apply_breakout(regime_by_date) -> dict:
+    from breakout_continuation import (BIAS_METHODS, VOL_MULTS, bias_series_4h,
+                                       run_cell_nostop, volume_floor)
+    c4h, _ = load_snapshot("4h")
+    floor = volume_floor(c4h)
+    method, vm = BIAS_METHODS[0], VOL_MULTS[len(VOL_MULTS) // 2]
+    signs, bms = bias_series_4h(c4h, method)
+    trades = run_cell_nostop(c4h, "4h", signs, bms, vm, floor)
+    split = _split_trades(trades, regime_by_date)
+    return {"config": f"4h breakout (bias {method}, vol_mult {vm}), no-stop hold-to-profit",
+            "total_trades": len(trades),
+            "by_regime": {reg: _summ_trades(split[reg], len(split[reg]) < MIN_REGIME_TRADES)
+                          for reg in REGIMES}}
+
+
+def phase_apply() -> None:
+    btc1d, _ = load_snapshot("1d")
+    labels = classify(btc1d, load_funding_rows())
+    regime_by_date = {r["date"]: r["label"] for r in labels}
+    print(f"Part D: regime split (block-boot {REPS_D} reps, DSR n_trials {N_TRIALS_TOURNAMENT}); "
+          "gate: BULL suggestive-only, BEAR insufficient-data (Part C)\n")
+
+    tour = _apply_tournament(btc1d, labels)
+    print("TREND TOURNAMENT (BTC 1d, per-bar block-boot + DSR):")
+    for reg in REGIMES:
+        c = tour[reg]
+        if "variants" not in c:
+            print(f"  {reg:7} n_bars {c['n_bars']:4} -> {c['verdict']}")
+            continue
+        best = max(c["variants"].items(), key=lambda kv: kv[1]["sharpe"])
+        print(f"  {reg:7} n_bars {c['n_bars']:4} | family bar {c['family_bar']:+.2f} | "
+              f"best {best[0]} Sharpe {best[1]['sharpe']:+.2f} DSR {best[1]['dsr']:.2f} "
+              f"clears={best[1]['clears_family_bar']} | any_clear&DSR={c['any_variant_clears_and_dsr']}")
+
+    t4 = _apply_track4(regime_by_date)
+    bo = _apply_breakout(regime_by_date)
+    for name, res in (("TRACK 4 -1.25", t4), ("S-B BREAKOUT", bo)):
+        print(f"\n{name} ({res['total_trades']} trades total):")
+        for reg in REGIMES:
+            s = res["by_regime"][reg]
+            if s["n"] == 0:
+                print(f"  {reg:7} n=0 -> insufficient-data")
+            else:
+                print(f"  {reg:7} n={s['n']:2} wins {s['wins']} netP&L {s['sum_net_pct']:+.2f}% "
+                      f"worstMAE {s['worst_mae_pct']}% -> {s['verdict']}")
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "regime_split.json").write_text(json.dumps(
+        {"generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         "block_boot_reps": REPS_D, "dsr_n_trials_tournament": N_TRIALS_TOURNAMENT,
+         "gate": "BULL suggestive-only, BEAR insufficient-data (Part C)",
+         "tournament": tour, "track4_m125": t4, "breakout_sb": bo}, indent=1), encoding="utf-8")
+    print(f"\nwritten: {OUTPUT_DIR / 'regime_split.json'}")
+
+
 def phase_selfcheck() -> None:
     from strategy.bias_4h import Swing
     U, D = SwingDirection.UP, SwingDirection.DOWN
@@ -293,8 +419,8 @@ def main() -> None:
         phase_labels()
     elif args.phase == "instances":
         phase_instances()
-    else:
-        raise SystemExit(f"phase {args.phase} is added in a later commit (Part D)")
+    elif args.phase == "apply":
+        phase_apply()
 
 
 if __name__ == "__main__":
