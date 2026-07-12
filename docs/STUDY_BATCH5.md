@@ -88,10 +88,14 @@ realized vol > its rolling median. 1 cell.
 
 | Study | Verdict | Doc |
 |---|---|---|
-| S-F | DONE — all tournament/Track4 NULLs survive block-boot unchanged; pooled common trend effect POSITIVE (Sharpe 0.59, P>0 99.7%); engine PENDING (n=8) | docs/STUDY_BATCH5_SF.md |
-| S-A | PENDING | this doc / SF |
-| S-D | PENDING | |
-| S-B | PENDING | |
-| S-C | PENDING | |
-| S-E | PENDING | |
-| S-G | PENDING | |
+| S-F | NULLs hardened; pooled common trend effect POSITIVE (Sharpe 0.59, P>0 99.7%); N_eff≈1.5–2; engine PENDING | docs/STUDY_BATCH5_SF.md |
+| S-A | Comp NULL CONFIRMED (targets lift net, none clears Sharpe bar) | STUDY_BATCH5_RESULTS.md |
+| S-D | Directional within noise; short side adverse → long-only justified | STUDY_BATCH5_RESULTS.md |
+| S-B | NULL (time-inval clears block-bar but DSR rejects — bull-market beta) | STUDY_BATCH5_RESULTS.md |
+| S-C | NULL — reversal lead FALSIFIED (breadth −81% vs EW −29%) | STUDY_BATCH5_RESULTS.md |
+| S-E | NULL / inert (funding gate leaves worst-MAE unchanged) | STUDY_BATCH5_RESULTS.md |
+| S-G | NULL (high-vol conditioning doesn't rescue reversal) | STUDY_BATCH5_RESULTS.md |
+
+**Batch conclusion:** no new tradeable edge; program conclusions hardened by
+the retrofit; one new positive = pooled common trend effect (Bayesian support
+for trend-as-risk-management). See STUDY_BATCH5_RESULTS.md end-section.

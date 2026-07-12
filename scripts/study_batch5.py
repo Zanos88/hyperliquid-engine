@@ -638,11 +638,108 @@ def phase_sc():
     print("written: research/output/batch5_sc.json")
 
 
+def phase_se():
+    """S-E: Track 4 robust (-1.25, first-profit, no stop) + veto entries when
+    trailing-30d funding percentile >= 90 (crowded-long dip)."""
+    from bisect import bisect_right
+    from track4_mean_reversion import bias_direction_series
+    from strategy.trigger_1h import fisher_transform
+    from data.feed import Candle
+    c4, _ = load_snapshot("4h")
+    bc, _ = load_snapshot("12h")
+    dirs, btimes = bias_direction_series(bc, 30)
+    fisher = fisher_transform(c4)[0]
+    fdoc = json.loads((Path(__file__).resolve().parents[1] / "research" / "data" /
+                       "BTC_funding_history.json").read_text(encoding="utf-8"))
+    ftimes = [int(t) for t, _ in fdoc["rows"]]; fvals = [float(v) for _, v in fdoc["rows"]]
+    WIN = 30 * 24 * 3600 * 1000
+    FEE = 0.00075
+
+    def fpct(ts):
+        hi = bisect_right(ftimes, ts); lo = bisect_right(ftimes, ts - WIN)
+        w = fvals[lo:hi]
+        if not w:
+            return None
+        return 100.0 * sum(1 for v in w if v <= fvals[hi - 1]) / len(w)
+
+    def walk(veto):
+        trades, ot = [], None
+        for i in range(60, len(c4)):
+            c = c4[i]
+            if ot is not None:
+                e = ot["entry"]; ot["mae"] = min(ot["mae"], c.low / e - 1)
+                net = (c.close / e - 1) - 2 * FEE
+                if net > 0 or fisher[i] >= 1.5:
+                    ot.update(net_pct=net * 100, bars_held=i - ot["entry_i"]); trades.append(ot); ot = None
+                continue
+            bj = bisect_right(btimes, c.close_time_ms) - 1; b = dirs[bj] if bj >= 0 else 0
+            if fisher[i] <= -1.25 and b == 1:
+                if veto:
+                    fp = fpct(c.close_time_ms)
+                    if fp is not None and fp >= 90:
+                        continue
+                ot = {"entry_i": i, "entry": c.close, "mae": 0.0}
+        return trades
+
+    base = walk(False); gated = walk(True)
+    def summ(t):
+        return {"trades": len(t), "wins": sum(1 for x in t if x["net_pct"] > 0),
+                "sum_net_pct": round(sum(x["net_pct"] for x in t), 2),
+                "worst_mae_pct": round(min((x["mae"] for x in t), default=0) * 100, 2)}
+    b, g = summ(base), summ(gated)
+    vetoed = b["trades"] - g["trades"]
+    print("=== S-E: funding-percentile>=90 entry veto on Track 4 ===")
+    print(f"  baseline: {b}")
+    print(f"  gated   : {g}  (vetoed {vetoed} entries)")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_se.json").write_text(json.dumps(
+        {"baseline": b, "funding_gated": g, "entries_vetoed": vetoed}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_se.json")
+    return b, g, vetoed
+
+
+def phase_sg():
+    """S-G: S-C breadth cell, active only when 30d realized vol > rolling median."""
+    from breadth_tournament import build_universe
+    uni = build_universe()
+    common = uni["common_ts"]; n = len(common)
+    # EW daily returns to derive the 30d realized-vol regime
+    ret_by = {}
+    for c in UNIVERSE:
+        p = uni["per_asset"][c]; idx = [p["eligible"][common[i]] for i in range(n)]
+        ret_by[c] = [p["rets"][j] for j in idx]
+    ew = [sum(ret_by[c][i] for c in UNIVERSE) / len(UNIVERSE) for i in range(n)]
+    vol30 = [0.0] * n
+    for i in range(30, n):
+        w = ew[i - 30:i]; m = sum(w) / 30
+        vol30[i] = (sum((x - m) ** 2 for x in w) / 30) ** 0.5
+    highvol = [False] * n
+    for i in range(60, n):
+        med = sorted(vol30[30:i])[len(vol30[30:i]) // 2] if i > 31 else 0.0
+        highvol[i] = vol30[i] > med
+    port, ewbh, L = _breadth_reversal_returns(active_by_bar=lambda i: highvol[i])
+    a = L + 1; ppy = 365.0
+    sr_b = bs.annualized_sharpe([r for r in port[a:] if True], ppy)
+    sr_ew = bs.annualized_sharpe(ewbh[a:], ppy)
+    dd_b, dd_ew = _maxdd(port[a:]), _maxdd(ewbh[a:])
+    beats = sr_b > sr_ew and dd_b < dd_ew
+    print("=== S-G: S-C breadth reversal, high-vol regime only ===")
+    print(f"  Sharpe {sr_b:+.2f} (EW {sr_ew:+.2f}) maxDD {dd_b:.2f} (EW {dd_ew:.2f}) "
+          f"total {sum(port[a:])*100:+.1f}% => {'BEATS EW' if beats else 'does NOT beat EW'}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_sg.json").write_text(json.dumps(
+        {"sharpe": round(sr_b, 3), "ew_sharpe": round(sr_ew, 3), "maxdd": round(dd_b, 3),
+         "ew_maxdd": round(dd_ew, 3), "total_pct": round(sum(port[a:]) * 100, 2),
+         "beats_ew": beats}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_sg.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd", "sb", "sc"))
+    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd", "sb", "sc", "se", "sg"))
     args = ap.parse_args()
-    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd, "sb": phase_sb, "sc": phase_sc}[args.phase]()
+    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd, "sb": phase_sb, "sc": phase_sc,
+     "se": phase_se, "sg": phase_sg}[args.phase]()
 
 
 if __name__ == "__main__":

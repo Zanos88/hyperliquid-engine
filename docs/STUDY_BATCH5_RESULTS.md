@@ -209,3 +209,72 @@ signal here is TREND (momentum), not reversal, at horizons beyond a few days.
 
 **S-C conclusion: the 8–10 week reversal gap is not an opportunity in this
 sample — it is momentum territory.** No forward-test candidate.
+
+---
+
+## S-E — Funding gate on Track 4 dips
+
+**Verdict: NULL / no benefit — the predicted MAE improvement does not
+materialize.** Track 4 robust (−1.25, first-profit, no stop) + veto entries
+when trailing-30d funding percentile ≥ 90 (crowded-long dip):
+
+| | Trades | Wins | Net % | Worst MAE |
+|---|---|---|---|---|
+| Baseline | 17 | 17 | +6.66 | −16.53 |
+| Funding-gated (≥90 veto) | 12 | 12 | +6.19 | **−16.53 (unchanged)** |
+
+The gate vetoes 5 of 17 entries but **does not remove the worst-MAE trade**
+(its −16.53% drawdown survives — that dip was not funding-crowded), and it
+trims return slightly (+6.66 → +6.19%). The registered prediction ("small
+worst-MAE improvement, negligible on return") is half-right on return
+(negligible) and **wrong on MAE** (zero improvement). Consistent with OI
+Phase 1's finding that funding extremes and this system's entries barely
+coincide — the gate is inert-to-mildly-harmful. No adoption.
+
+## S-G — High-vol conditioning (S-C breadth, scope-limited)
+
+**Verdict: NULL.** The S-C breadth reversal cell, active only when 30-day
+realized vol > its rolling median: Sharpe **−0.61** (EW −0.09), maxDD 1.42
+(EW 1.82), total −135.8%. It beats EW on drawdown but **fails on Sharpe**, so
+it fails the "beat EW on Sharpe AND maxDD" kill criterion. Restricting the
+falling-knife reversal to high-vol weeks does not rescue it — high-vol weeks
+are exactly when the biggest losers fall hardest. Confirms S-C: no reversal
+edge at this horizon in any conditioning tried.
+
+---
+
+# Study Batch 5 — Program-level conclusion
+
+| Study | Verdict | One-line |
+|---|---|---|
+| **S-F** | NULLs HARDENED + one NEW positive | Block-boot bars reproduce shift bars (tournament NULL unchanged, DSR<0.95); **pooled common trend effect POSITIVE** (Sharpe 0.59, P>0 99.7%); N_eff≈1.5–2 ends the correlated-crypto objection; engine PENDING (n=8 CI spans 0) |
+| **S-A** | Comp NULL CONFIRMED | Targets lift stopped cells net-positive but none clears its Sharpe bar; 3.5×ATR/+1.5R logged as least-weak comp candidate |
+| **S-D** | Directional (within noise) | Reversion asymmetry positive 9/9 but CIs span 0; short side systematically adverse → **long-only justified structurally** |
+| **S-B** | NULL (beta, not alpha) | time-inval/2R clears the block-boot bar but **DSR rejects** (0.66); 162-day holds = bull-market beta — validates dual bar+DSR reporting |
+| **S-C** | NULL — lead FALSIFIED | 8 single-asset cells NULL; breadth loses −81% vs EW −29% — 8-week crypto is momentum, not reversal |
+| **S-E** | NULL / inert | Funding gate leaves worst-MAE unchanged, trims return |
+| **S-G** | NULL | High-vol conditioning doesn't rescue the reversal |
+
+**Bottom line.** No new tradeable edge emerged, and the program's existing
+conclusions not only survive the block-bootstrap + Deflated-Sharpe retrofit
+but are **hardened** by it. Three durable takeaways:
+
+1. **The one genuinely new positive is at the pooled level:** the common
+   trend effect across the 7 assets is significantly > 0 (Sharpe 0.59,
+   P>0 99.7%), even though no single specification clears its multiplicity-
+   adjusted bar. "Trend as risk management" now has Bayesian support, not
+   just a descriptive 21/21 count — the surviving directional claim of the
+   whole program, strengthened.
+2. **The retrofit earned its keep by catching a false positive** (S-B): the
+   block-boot bar alone was nearly fooled by a sparse long-hold capturing
+   bull-market beta; Deflated Sharpe caught it. Reporting BOTH is now
+   standard.
+3. **Track 4's long-only is structurally justified** (S-D short-side
+   adversity), and its Comp NULL is confirmed with the mechanism precisely
+   mapped (S-A: wide-stop/far-target is the right geometry, it just doesn't
+   clear a chance bar at n≈15). The medium-horizon reversal lead is
+   falsified (S-C): beyond a few days, this market is momentum, not
+   reversal.
+
+No forward-test candidate is promoted from Batch 5. The running trend
+forward test (tsmom30 + track4_meanrev) remains the program's live arbiter.

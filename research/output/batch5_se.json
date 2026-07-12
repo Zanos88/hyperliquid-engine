@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "trades": 17,
+  "wins": 17,
+  "sum_net_pct": 6.66,
+  "worst_mae_pct": -16.53
+ },
+ "funding_gated": {
+  "trades": 12,
+  "wins": 12,
+  "sum_net_pct": 6.19,
+  "worst_mae_pct": -16.53
+ },
+ "entries_vetoed": 5
+}
