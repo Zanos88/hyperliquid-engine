@@ -16,6 +16,26 @@ shape.
 > **SIMULATED / backtest only.** Same block-bootstrap + Deflated-Sharpe standard
 > as Study Batch 5 — the classifier does not get a lighter bar for being new.
 
+## Bottom line
+
+A locked, pre-registered BULL/BEAR/NEUTRAL classifier (structure + halving +
+funding, 2-of-3) was defined and committed **before** any strategy was split by
+it. The result, in one line: **conditioning on a properly-defined bull regime
+does not turn trend (or breakout) into a provable edge.** Specifically —
+
+1. **The classifier can barely find regimes to test.** Over BTC's ~5.9-year 1d
+   history it produces **~2 independent bull cycles and essentially no bear**
+   (one 23-day bear episode; 5 of 7 panel assets have zero). Bull is *low-power*;
+   bear is *untestable*. This gate is itself the most important finding.
+2. **Trend is regime-dependent in raw Sharpe but not into significance.** Best
+   variant Sharpe is 3.00 in BULL vs 0.37 in NEUTRAL — yet it fails its
+   within-regime block-boot luck bar in *every* regime (BULL bar 4.16 > 3.00,
+   DSR 0.90), because bull-conditioning lifts the luck bar as much as the signal.
+3. **Breakout's tail risk is regime-dependent** (worst MAE −27.7% in bear vs
+   −4.2% in bull); **Track 4 is a neutral-regime strategy** (13/17 trades).
+4. The framework **worked as a discipline check, not an edge-finder** — exactly
+   the honest outcome the pre-registration was designed to protect.
+
 ## Part A — data availability (what is genuinely free vs a spend decision)
 
 Confirmed against the repo and the known data-vendor landscape:
@@ -182,4 +202,27 @@ trend strategy, so it fires in neutral markets, not directional regimes.
   cycles and ~0 bear, and shows that even generous bull-conditioning leaves trend
   short of significance. The honest answer to "does trend/breakout work
   conditional on a bull regime?" is **not provably, on this data.**
+
+## Limits & honest next steps (not licensed by this run)
+
+- The gate (~2 bull cycles, ~0 bear) is the binding constraint. A stronger test
+  needs **more independent regime instances** — the same data-span problem as the
+  let-winners-run study. Deeper multi-cycle history (external 1d back to earlier
+  cycles) would add instances; the co-moving 7-asset panel does **not**.
+- The locked definition is deliberately conservative (71% NEUTRAL; misses the
+  2021 blow-off and the 2022 bear). A *v2* classifier (e.g. adding on-chain, if
+  Zane approves the spend) would be a **new pre-registration**, never a retro-tune
+  of this one.
+- Nothing here promotes a strategy. The one durable takeaway is methodological:
+  a regime filter is an added degree of freedom that lifts the luck bar with the
+  signal, so "works in bull" must be shown to clear a *within-regime* bar — which
+  trend does not.
+
+## Reproduce
+```powershell
+python scripts/regime_classifier.py --phase selfcheck
+python scripts/regime_classifier.py --phase labels      # Part B artifact
+python scripts/regime_classifier.py --phase instances   # Part C gate
+python scripts/regime_classifier.py --phase apply        # Part D split
+```
 
