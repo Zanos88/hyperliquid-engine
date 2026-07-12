@@ -43,6 +43,36 @@ confirmed-free components (structure + halving + funding). If Zane later approve
 an on-chain spend, a v2 classifier can add it — as a *new*, separately
 pre-registered definition, never a retro-tune of this one.
 
-<!-- Part B (locked definition), Part C (instance count / gate), and Part D
-     (retroactive split + per-strategy verdicts) are appended by their own
-     commits, in order, after this Part A section is committed. -->
+## Part B — the classifier, LOCKED (committed before any Part C/D result)
+
+Composite daily label, causal (no lookahead), from the three free components.
+**Every constant below is the registered rule** (`scripts/regime_classifier.py`),
+fixed now and never tuned after seeing Part C/D. Per-bar labels + component votes
+are emitted to `research/output/regime_labels_btc.json` so the definition is
+fully inspectable.
+
+- **Structure** (`detect_swings`, fractal_width 2, trailing **120** daily bars):
+  last two swing highs and lows → **higher-high AND higher-low = BULL;
+  lower-high AND lower-low = BEAR; else NEUTRAL.**
+- **Halving phase** (days since most-recent halving; halvings 2020-05-11,
+  2024-04-19; cycle ≈ 1400d) — *stated as a heuristic under test, not assumed
+  true*: **0–400 expansion = BULL; 400–550 peak-and-decline = BEAR; 550–1100
+  accumulation = NEUTRAL; 1100+ pre-halving run-up = BULL.**
+- **Funding** (30-day avg funding, percentile within its trailing **365-day**
+  distribution): **≥70 = BULL; ≤30 = BEAR; else NEUTRAL. ABSTAINS** until 365d of
+  funding history exists (funding starts 2023-05-12 → abstains before ~2024-05).
+- **Combination:** among non-abstaining components, **BULL if ≥2 vote BULL, BEAR
+  if ≥2 vote BEAR, else NEUTRAL.** When funding abstains, the two remaining
+  components must **both** agree for a directional label.
+
+**Label distribution on BTC 1d (2020-08-19 → 2026-07-08, 2150 bars):**
+**BULL 405 · BEAR 210 · NEUTRAL 1535 (71%).** This is a *property of the locked
+rule, reported not tuned.* The pre-2024 era is almost entirely NEUTRAL because
+funding abstains and structure vs halving-phase routinely disagree — e.g. the
+Nov-2021 bull top scores structure=BULL but halving=BEAR (peak-and-decline) →
+NEUTRAL; the entire 2021 bull is **not** captured. The single decisive BULL
+stretch is **2024–2025**, where all three components align in post-halving
+expansion. **The 2021 bull being uncaptured is deliberately left as-is** —
+adjusting the definition to capture it after the fact is exactly the circularity
+this study exists to avoid. It directly foreshadows the Part C gate.
+
