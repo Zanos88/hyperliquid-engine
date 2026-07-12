@@ -384,11 +384,147 @@ def phase_sd():
     print("written: research/output/batch5_sd.json")
 
 
+def phase_sb():
+    """S-B: breakout re-test with wide/time-invalidation stops. 4H trigger,
+    1D Fib-S/R HTF bias (higher TF for a 4H trigger), volume-confirmed
+    (mult 2.0 fixed, 20th-pct floor). 6 cells = stops {2.0xATR, 3.0xATR,
+    time-inval} x targets {2R, trail 2.5xATR}."""
+    from bisect import bisect_right
+    from breakout_continuation import confirmed_levels, bias_series_4h, volume_floor
+    from strategy.trigger_1h import sma
+    from strategy.atr import wilder_atr
+    c4, _ = load_snapshot("4h")
+    c1d, _ = load_snapshot("1d")
+    signs, bms = bias_series_4h(c1d, "fibsr")            # 1D Fib-S/R HTF bias
+    atr = wilder_atr(c4)
+    vols = [c.volume for c in c4]
+    vavg = sma(vols, 20)
+    floor = volume_floor(c4)
+    highs, lows = confirmed_levels(c4)
+    n = len(c4)
+    FEE, VMULT = 0.00075, 2.0
+    ppy = 6 * 365.0
+    rets4 = log_returns(c4)
+
+    def run(stop_kind, stop_mult, target_kind):
+        hi_c = lo_c = 0
+        last_high = last_low = None
+        trades, pos = [], [0] * n
+        ot = None
+        for i in range(60, n):
+            c = c4[i]
+            while hi_c < len(highs) and highs[hi_c][0] <= i:
+                last_high = highs[hi_c][1]; hi_c += 1
+            while lo_c < len(lows) and lows[lo_c][0] <= i:
+                last_low = lows[lo_c][1]; lo_c += 1
+            if ot is not None:
+                e, sd, side = ot["entry"], ot["rdist"], ot["side"]
+                if side == "LONG":
+                    ot["mae"] = min(ot["mae"], c.low / e - 1)
+                    ot["peak"] = max(ot["peak"], c.high)
+                else:
+                    ot["mae"] = min(ot["mae"], (e - c.high) / e)
+                    ot["trough"] = min(ot["trough"], c.low)
+                held = i - ot["entry_i"]
+                exit_px = reason = None
+                if stop_kind == "price":
+                    lvl = e - stop_mult * ot["atr"] if side == "LONG" else e + stop_mult * ot["atr"]
+                    if (side == "LONG" and c.low <= lvl) or (side == "SHORT" and c.high >= lvl):
+                        exit_px, reason = lvl, "stop"
+                if exit_px is None and target_kind == "trail":
+                    if side == "LONG":
+                        tr = ot["peak"] - 2.5 * ot["atr"]
+                        if c.low <= tr and held > 0:
+                            exit_px, reason = tr, "trail"
+                    else:
+                        tr = ot["trough"] + 2.5 * ot["atr"]
+                        if c.high >= tr and held > 0:
+                            exit_px, reason = tr, "trail"
+                if exit_px is None and target_kind == "2R":
+                    tgt = e + 2 * sd if side == "LONG" else e - 2 * sd
+                    if (side == "LONG" and c.high >= tgt) or (side == "SHORT" and c.low <= tgt):
+                        exit_px, reason = tgt, "target"
+                if exit_px is None and stop_kind == "time_inval" and held >= 12:
+                    prog = (ot["peak"] - e) if side == "LONG" else (e - ot["trough"])
+                    if prog < 0.5 * sd:
+                        exit_px, reason = c.close, "time_inval"
+                if exit_px is not None:
+                    g = (exit_px / e - 1) if side == "LONG" else (e - exit_px) / e
+                    net = g - 2 * FEE
+                    ot.update(exit_i=i, net_pct=net * 100, r=net / (sd / e),
+                              bars_held=held, exit_reason=reason)
+                    trades.append(ot)
+                    for k in range(ot["entry_i"], i + 1):
+                        pos[k] = 1 if side == "LONG" else -1
+                    ot = None
+                continue
+            bj = bisect_right(bms, c.close_time_ms) - 1
+            b = signs[bj] if bj >= 0 else 0
+            if atr[i] <= 0 or vavg[i] <= 0 or not (vols[i] >= VMULT * vavg[i] and vols[i] >= floor):
+                continue
+            prev = c4[i - 1].close
+            side = level = None
+            if b == 1 and last_high is not None and prev <= last_high < c.close:
+                side, level = "LONG", last_high
+            elif b == -1 and last_low is not None and prev >= last_low > c.close:
+                side, level = "SHORT", last_low
+            if side:
+                rdist = (stop_mult if stop_kind == "price" else 2.0) * atr[i]
+                ot = {"entry_i": i, "entry": c.close, "side": side, "atr": atr[i],
+                      "rdist": rdist, "mae": 0.0, "peak": c.close, "trough": c.close}
+        return trades, pos
+
+    stops = [("price", 2.0, "2.0xATR"), ("price", 3.0, "3.0xATR"), ("time_inval", None, "time-inval")]
+    targets = [("2R", "2R"), ("trail", "trail2.5ATR")]
+    print("=== S-B: breakout wide-stop / time-invalidation re-test (4H, Fib-S/R 1D bias) ===")
+    cells, any_survive = [], False
+    for sk, sm, slabel in stops:
+        for tk, tlabel in targets:
+            trades, pos = run(sk, sm, tk)
+            nets = [t["net_pct"] for t in trades]
+            rs = [t["r"] for t in trades]
+            net_pos = sum(nets) > 0
+            gl = abs(sum(r for r in rs if r <= 0)); gw = sum(r for r in rs if r > 0)
+            netstream = net_strategy_returns(pos, rets4)[61:]  # signed pos (short = -1)
+            sharpe = bs.annualized_sharpe(netstream, ppy)
+            bar = bs.block_bootstrap_family_bar(rets4[61:], [pos[61:]], ppy, 20 * 6, REPS)["bar"]
+            dsr = bs.deflated_sharpe_ratio(sharpe, netstream, ppy, 6)   # 6 S-B cells
+            max_hold = max((t["bars_held"] for t in trades), default=0)
+            worst_mae = round(min((t["mae"] for t in trades), default=0) * 100, 2)
+            passes_bar = net_pos and sharpe > bar
+            passes_dsr = not math.isnan(dsr) and dsr >= 0.95
+            any_survive = any_survive or (passes_bar and passes_dsr)
+            cells.append({"stop": slabel, "target": tlabel, "trades": len(trades),
+                          "wins": sum(1 for x in nets if x > 0), "sum_net_pct": round(sum(nets), 2),
+                          "sum_r": round(sum(rs), 2), "pf": round(gw / gl, 2) if gl > 0 else None,
+                          "sharpe": round(sharpe, 3), "block_bar": round(bar, 3),
+                          "deflated_sharpe": round(dsr, 3), "worst_mae_pct": worst_mae,
+                          "max_hold_bars": max_hold, "max_hold_days": round(max_hold / 6, 1),
+                          "net_positive": net_pos, "clears_block_bar": passes_bar,
+                          "clears_dsr": passes_dsr,
+                          "time_inval_exits": sum(1 for t in trades if t["exit_reason"] == "time_inval")})
+            note = ""
+            if passes_bar and not passes_dsr:
+                note = "  <-- clears block-bar but DSR REJECTS"
+            elif passes_bar and passes_dsr:
+                note = "  <-- SURVIVES (bar + DSR)"
+            print(f"  {slabel:11} {tlabel:12}: n={len(trades):3d} W={cells[-1]['wins']:3d} "
+                  f"netR {sum(rs):+7.2f} net% {sum(nets):+8.2f} PF {cells[-1]['pf']} "
+                  f"Sharpe {sharpe:+.2f} vs bar {bar:.2f} DSR {dsr:.3f} maxHold {round(max_hold/6,0):.0f}d{note}")
+    verdict = ("POSITIVE — >=1 cell positive net AND clears block-boot bar" if any_survive
+               else "NULL — archetype closed with the geometry objection tested")
+    print(f"\nVERDICT: {verdict}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_sb.json").write_text(json.dumps(
+        {"cells": cells, "verdict": verdict}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_sb.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd"))
+    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd", "sb"))
     args = ap.parse_args()
-    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd}[args.phase]()
+    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd, "sb": phase_sb}[args.phase]()
 
 
 if __name__ == "__main__":

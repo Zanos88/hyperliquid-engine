@@ -104,3 +104,56 @@ No trading rule produced (by design). Informs S-A's interpretation: the
 long-only restriction is justified; the thin-but-positive long-side
 reversion at 24 bars is exactly the effect S-A's cells monetize (and which
 survives net but not the Sharpe bar).
+
+---
+
+## S-B — Breakout wide-stop / time-invalidation re-test
+
+**Verdict: NULL — and a textbook demonstration of why S-F added Deflated
+Sharpe alongside the block-boot bar.** One cell (time-invalidation / 2R)
+*mechanically clears the block-boot Sharpe bar* (1.13 vs 1.07) but **DSR
+rejects it (0.657 < 0.95)**, and forensics expose the pass as bull-market
+beta, not breakout alpha. The archetype stays closed — now with the geometry
+objection genuinely tested (a stronger null than the original 0/24).
+
+4H trigger, 1D Fib-S/R HTF bias, volume-confirmed (mult 2.0, 20th-pct floor).
+6 cells = stops {2.0×ATR, 3.0×ATR, time-invalidation (exit if not +0.5R in
+12 bars, no price stop)} × targets {2R, trail 2.5×ATR}.
+
+| Stop | Target | n | W | Net R | Net % | PF | Sharpe | block-bar | DSR | max hold | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2.0×ATR | 2R | 37 | 16 | +8.82 | +18.18 | 1.40 | 0.58 | 1.05 | 0.33 | 10d | NULL |
+| 2.0×ATR | trail 2.5×ATR | 37 | 14 | −6.42 | −25.15 | 0.66 | 0.25 | 1.05 | 0.18 | 7d | NULL |
+| 3.0×ATR | 2R | 30 | 13 | +7.77 | +19.30 | 1.44 | 0.17 | 1.05 | 0.15 | 16d | NULL |
+| 3.0×ATR | trail 2.5×ATR | 37 | 14 | −4.50 | −26.31 | 0.65 | 0.29 | 1.06 | 0.19 | 7d | NULL |
+| **time-inval** | **2R** | **14** | **13** | **+24.01** | **+59.06** | **21.24** | **1.13** | 1.07 | **0.66** | **162d** | **NULL (beta)** |
+| time-inval | trail 2.5×ATR | 38 | 14 | −5.77 | −22.40 | 0.69 | 0.26 | 1.05 | 0.18 | 7d | NULL |
+
+**Findings:**
+1. **The registered prediction is confirmed on net R — but the mechanism
+   invalidates it.** Time-invalidation/2R nets +24R (vs +8.8R for the best
+   price-stop cell), and PF 21.24 with 13/14 wins looks spectacular. The
+   forensics: every winner exits at *exactly* +2R, the single loss is the
+   one time-invalidated trade, worst MAE **−23.9%** (no price stop), and
+   **max hold 162 days** (another at 40 days). The 2R target with no stop
+   and no time-cap-once-+0.5R-progress-is-made turns winners into
+   multi-month LONG HOLDS that capture bull-market drift until price
+   drifts +2R. It is buy-and-hold beta wearing a breakout costume, not a
+   continuation edge.
+2. **DSR is the honest arbiter and it rejects the cell (0.657).** The
+   block-boot bar (which resamples returns but keeps the long-hold position
+   fixed) is nearly fooled because a persistent-long position's resampled
+   Sharpe stays near buy-and-hold's; Deflated Sharpe — correcting for the 6
+   trials and the return non-normality — catches it. This validates S-F's
+   decision to report BOTH: the bar alone would have produced a false
+   positive here.
+3. **No cell survives on both criteria** → the breakout archetype is closed
+   with the geometry objection actually tested. The tight-stop 0/24 null and
+   this wide-stop/time-invalidation null together bracket the geometry space:
+   BTC breakouts of recent swing levels do not continue reliably enough to
+   pay for either a tight stop (whipsaw) or a wide/no stop (the "edge"
+   collapses to holding beta).
+
+**Registered kill criterion (positive net + block-boot bar):** literally met
+by one cell; but with S-F's DSR in the standard report, that cell fails, and
+its mechanism is beta. Substantive verdict: **NULL.**
