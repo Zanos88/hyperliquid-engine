@@ -1,0 +1,2240 @@
+{
+ "ran_at_utc": "2026-07-12T11:53:38+00:00",
+ "kind": "SIMULATED \u2014 frozen 4H/1H snapshot; live trend entries; let-winners-run no-stop exits; 4H bias-flip brake. NOT live/comp. Combinations deferred.",
+ "window": {
+  "from": "2025-12-12T18:59:59.999000+00:00",
+  "to": "2026-07-09T03:59:59.999000+00:00",
+  "trigger_bars": 5002
+ },
+ "config": "default indicators, 4h bias / 1h trigger, structural stop (eligibility+sizing only), fib_extension_preferred target",
+ "defaults": {
+  "concurrent_cap": 3,
+  "min_move_r": 1.0,
+  "trail_arm_r": 1.0,
+  "trail_dist_r": 1.0,
+  "note": "flagged design choices, not tuned"
+ },
+ "baseline_doc": {
+  "trades": 8,
+  "w_l": "4-4",
+  "net_r": 2.86,
+  "profit_factor": 1.43,
+  "max_drawdown_r": 3.72
+ },
+ "stopped_on_snapshot": {
+  "bars_evaluated": 4962,
+  "resolved": 8,
+  "wins": 4,
+  "losses": 4,
+  "unresolved": 0,
+  "suppressed_rr": 86,
+  "suppressed_exhaustion": 0,
+  "suppressed_standdown": 0,
+  "gross_r": 7.403,
+  "net_r": 2.863,
+  "avg_net_r": 0.358,
+  "win_rate": 0.5,
+  "profit_factor": 1.429,
+  "max_drawdown_r": 3.721
+ },
+ "direction_split": {
+  "long": 1,
+  "short": 7
+ },
+ "first_profit_all8_ungated_net_r": 5.704,
+ "prior_first_profit_net_r": 5.7,
+ "three_way_reconciliation": {
+  "first_profit": [
+   {
+    "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.486,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 2.954,
+    "model_exit": "reversion",
+    "model_net_r": 2.954,
+    "model_days": 0.12,
+    "model_mae_pct": -0.43,
+    "model_mae_r": -1.38
+   },
+   {
+    "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.166,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.757,
+    "model_exit": "reversion",
+    "model_net_r": 0.757,
+    "model_days": 0.17,
+    "model_mae_pct": -0.34,
+    "model_mae_r": -0.65
+   },
+   {
+    "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.459,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -2.741,
+    "model_exit": "bias_flip",
+    "model_net_r": -2.741,
+    "model_days": 0.17,
+    "model_mae_pct": -1.05,
+    "model_mae_r": -3.2
+   },
+   {
+    "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.388,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 4.405,
+    "model_exit": "reversion",
+    "model_net_r": 4.405,
+    "model_days": 0.04,
+    "model_mae_pct": -0.17,
+    "model_mae_r": -0.64
+   },
+   {
+    "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 1.962,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.987,
+    "model_exit": "reversion",
+    "model_net_r": 1.987,
+    "model_days": 0.04,
+    "model_mae_pct": 0.0,
+    "model_mae_r": 0.0
+   },
+   {
+    "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.991,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.879,
+    "model_exit": "reversion",
+    "model_net_r": 1.879,
+    "model_days": 0.08,
+    "model_mae_pct": -0.45,
+    "model_mae_r": -2.95
+   },
+   {
+    "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.73,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -4.345,
+    "model_exit": "bias_flip",
+    "model_net_r": -4.345,
+    "model_days": 0.29,
+    "model_mae_pct": -1.15,
+    "model_mae_r": -5.57
+   },
+   {
+    "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+    "dir": "LONG",
+    "stopped_exit": "target",
+    "stopped_net_r": 3.013,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.808,
+    "model_exit": "reversion",
+    "model_net_r": 0.808,
+    "model_days": 0.04,
+    "model_mae_pct": -0.0,
+    "model_mae_r": -0.01
+   }
+  ],
+  "fib_target": [
+   {
+    "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.486,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 2.954,
+    "model_exit": "bias_flip",
+    "model_net_r": 0.574,
+    "model_days": 0.17,
+    "model_mae_pct": -0.43,
+    "model_mae_r": -1.38
+   },
+   {
+    "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.166,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.757,
+    "model_exit": "bias_flip",
+    "model_net_r": 0.587,
+    "model_days": 0.21,
+    "model_mae_pct": -0.34,
+    "model_mae_r": -0.65
+   },
+   {
+    "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.459,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -2.741,
+    "model_exit": "bias_flip",
+    "model_net_r": -2.741,
+    "model_days": 0.17,
+    "model_mae_pct": -1.05,
+    "model_mae_r": -3.2
+   },
+   {
+    "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.388,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 4.405,
+    "model_exit": "fib_target",
+    "model_net_r": 2.388,
+    "model_days": 0.04,
+    "model_mae_pct": -0.17,
+    "model_mae_r": -0.64
+   },
+   {
+    "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 1.962,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.987,
+    "model_exit": "fib_target",
+    "model_net_r": 1.962,
+    "model_days": 0.04,
+    "model_mae_pct": 0.0,
+    "model_mae_r": 0.0
+   },
+   {
+    "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.991,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.879,
+    "model_exit": "fib_target",
+    "model_net_r": 3.275,
+    "model_days": 0.08,
+    "model_mae_pct": -0.45,
+    "model_mae_r": -2.95
+   },
+   {
+    "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.73,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -4.345,
+    "model_exit": "bias_flip",
+    "model_net_r": -4.345,
+    "model_days": 0.29,
+    "model_mae_pct": -1.15,
+    "model_mae_r": -5.57
+   },
+   {
+    "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+    "dir": "LONG",
+    "stopped_exit": "target",
+    "stopped_net_r": 3.013,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.808,
+    "model_exit": "fib_target",
+    "model_net_r": 3.013,
+    "model_days": 0.17,
+    "model_mae_pct": -0.0,
+    "model_mae_r": -0.01
+   }
+  ],
+  "resistance_rejection": [
+   {
+    "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.486,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 2.954,
+    "model_exit": "bias_flip",
+    "model_net_r": 0.574,
+    "model_days": 0.17,
+    "model_mae_pct": -0.43,
+    "model_mae_r": -1.38
+   },
+   {
+    "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.166,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.757,
+    "model_exit": "bias_flip",
+    "model_net_r": 0.587,
+    "model_days": 0.21,
+    "model_mae_pct": -0.34,
+    "model_mae_r": -0.65
+   },
+   {
+    "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.459,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -2.741,
+    "model_exit": "bias_flip",
+    "model_net_r": -2.741,
+    "model_days": 0.17,
+    "model_mae_pct": -1.05,
+    "model_mae_r": -3.2
+   },
+   {
+    "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.388,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 4.405,
+    "model_exit": "bias_flip",
+    "model_net_r": 11.775,
+    "model_days": 0.21,
+    "model_mae_pct": -0.17,
+    "model_mae_r": -0.64
+   },
+   {
+    "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 1.962,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.987,
+    "model_exit": "resistance_rejection",
+    "model_net_r": -0.246,
+    "model_days": 0.08,
+    "model_mae_pct": -0.2,
+    "model_mae_r": -0.5
+   },
+   {
+    "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.991,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.879,
+    "model_exit": "resistance_rejection",
+    "model_net_r": -0.729,
+    "model_days": 0.04,
+    "model_mae_pct": -0.45,
+    "model_mae_r": -2.95
+   },
+   {
+    "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.73,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -4.345,
+    "model_exit": "bias_flip",
+    "model_net_r": -4.345,
+    "model_days": 0.29,
+    "model_mae_pct": -1.15,
+    "model_mae_r": -5.57
+   },
+   {
+    "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+    "dir": "LONG",
+    "stopped_exit": "target",
+    "stopped_net_r": 3.013,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.808,
+    "model_exit": "resistance_rejection",
+    "model_net_r": 1.095,
+    "model_days": 0.17,
+    "model_mae_pct": -0.0,
+    "model_mae_r": -0.01
+   }
+  ],
+  "min_move_first_profit": [
+   {
+    "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.486,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 2.954,
+    "model_exit": "min_move_profit",
+    "model_net_r": 2.954,
+    "model_days": 0.12,
+    "model_mae_pct": -0.43,
+    "model_mae_r": -1.38
+   },
+   {
+    "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.166,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.757,
+    "model_exit": "min_move_profit",
+    "model_net_r": 0.757,
+    "model_days": 0.17,
+    "model_mae_pct": -0.34,
+    "model_mae_r": -0.65
+   },
+   {
+    "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.459,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -2.741,
+    "model_exit": "bias_flip",
+    "model_net_r": -2.741,
+    "model_days": 0.17,
+    "model_mae_pct": -1.05,
+    "model_mae_r": -3.2
+   },
+   {
+    "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.388,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 4.405,
+    "model_exit": "min_move_profit",
+    "model_net_r": 4.405,
+    "model_days": 0.04,
+    "model_mae_pct": -0.17,
+    "model_mae_r": -0.64
+   },
+   {
+    "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 1.962,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.987,
+    "model_exit": "min_move_profit",
+    "model_net_r": 1.987,
+    "model_days": 0.04,
+    "model_mae_pct": 0.0,
+    "model_mae_r": 0.0
+   },
+   {
+    "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.991,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.879,
+    "model_exit": "min_move_profit",
+    "model_net_r": 1.879,
+    "model_days": 0.08,
+    "model_mae_pct": -0.45,
+    "model_mae_r": -2.95
+   },
+   {
+    "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.73,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -4.345,
+    "model_exit": "bias_flip",
+    "model_net_r": -4.345,
+    "model_days": 0.29,
+    "model_mae_pct": -1.15,
+    "model_mae_r": -5.57
+   },
+   {
+    "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+    "dir": "LONG",
+    "stopped_exit": "target",
+    "stopped_net_r": 3.013,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.808,
+    "model_exit": "min_move_profit",
+    "model_net_r": 0.808,
+    "model_days": 0.04,
+    "model_mae_pct": -0.0,
+    "model_mae_r": -0.01
+   }
+  ],
+  "trailing_once_profitable": [
+   {
+    "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.486,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 2.954,
+    "model_exit": "trailing_stop",
+    "model_net_r": 2.025,
+    "model_days": 0.17,
+    "model_mae_pct": -0.43,
+    "model_mae_r": -1.38
+   },
+   {
+    "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.166,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.757,
+    "model_exit": "bias_flip",
+    "model_net_r": 0.587,
+    "model_days": 0.21,
+    "model_mae_pct": -0.34,
+    "model_mae_r": -0.65
+   },
+   {
+    "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.459,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -2.741,
+    "model_exit": "trailing_stop",
+    "model_net_r": 0.047,
+    "model_days": 0.08,
+    "model_mae_pct": -0.42,
+    "model_mae_r": -1.29
+   },
+   {
+    "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 2.388,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 4.405,
+    "model_exit": "trailing_stop",
+    "model_net_r": 6.761,
+    "model_days": 0.12,
+    "model_mae_pct": -0.17,
+    "model_mae_r": -0.64
+   },
+   {
+    "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "target",
+    "stopped_net_r": 1.962,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.987,
+    "model_exit": "trailing_stop",
+    "model_net_r": 1.624,
+    "model_days": 0.08,
+    "model_mae_pct": -0.2,
+    "model_mae_r": -0.5
+   },
+   {
+    "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.991,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 1.879,
+    "model_exit": "trailing_stop",
+    "model_net_r": -0.886,
+    "model_days": 0.08,
+    "model_mae_pct": -0.45,
+    "model_mae_r": -2.95
+   },
+   {
+    "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+    "dir": "SHORT",
+    "stopped_exit": "stop",
+    "stopped_net_r": -1.73,
+    "first_profit_exit": "bias_flip",
+    "first_profit_net_r": -4.345,
+    "model_exit": "trailing_stop",
+    "model_net_r": -0.628,
+    "model_days": 0.08,
+    "model_mae_pct": -0.49,
+    "model_mae_r": -2.38
+   },
+   {
+    "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+    "dir": "LONG",
+    "stopped_exit": "target",
+    "stopped_net_r": 3.013,
+    "first_profit_exit": "reversion",
+    "first_profit_net_r": 0.808,
+    "model_exit": "trailing_stop",
+    "model_net_r": 1.118,
+    "model_days": 0.12,
+    "model_mae_pct": -0.0,
+    "model_mae_r": -0.01
+   }
+  ]
+ },
+ "cells": {
+  "first_profit|long_single": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 0.808,
+   "avg_net_r": 0.808,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "reversion": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.04,
+    "max": 0.04,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 0.808,
+    "top1_net_r": 0.808,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "first_profit|both_single": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 5.704,
+   "avg_net_r": 0.713,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "reversion": 6,
+    "bias_flip": 2
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 6
+   },
+   "dominance": {
+    "total_net_r": 5.704,
+    "top1_net_r": 4.405,
+    "net_ex_top1": 1.3,
+    "net_ex_top2": -1.654,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 2.954,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.757,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 4.405,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.987,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.879,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "first_profit|long_concurrent": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 0.808,
+   "avg_net_r": 0.808,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "reversion": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.04,
+    "max": 0.04,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 0.808,
+    "top1_net_r": 0.808,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.0,
+    "worst_combined_adverse_r": -0.01
+   }
+  },
+  "first_profit|both_concurrent": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 5.704,
+   "avg_net_r": 0.713,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "reversion": 6,
+    "bias_flip": 2
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 6
+   },
+   "dominance": {
+    "total_net_r": 5.704,
+    "top1_net_r": 4.405,
+    "net_ex_top1": 1.3,
+    "net_ex_top2": -1.654,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 2.954,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.757,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 4.405,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.987,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "reversion",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.879,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "reversion",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -1.15,
+    "worst_combined_adverse_r": -5.57
+   }
+  },
+  "fib_target|long_single": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 3.013,
+   "avg_net_r": 3.013,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "fib_target": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.17,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 3.013,
+    "top1_net_r": 3.013,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "fib_target",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 3.013,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "fib_target|both_single": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 4.713,
+   "avg_net_r": 0.589,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "fib_target": 4,
+    "bias_flip": 4
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 4
+   },
+   "dominance": {
+    "total_net_r": 4.713,
+    "top1_net_r": 3.275,
+    "net_ex_top1": 1.438,
+    "net_ex_top2": -1.575,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.574,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 2.388,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.962,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 3.275,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "fib_target",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 3.013,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "fib_target|long_concurrent": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 3.013,
+   "avg_net_r": 3.013,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "fib_target": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.17,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 3.013,
+    "top1_net_r": 3.013,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "fib_target",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 3.013,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.0,
+    "worst_combined_adverse_r": -0.01
+   }
+  },
+  "fib_target|both_concurrent": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 4.713,
+   "avg_net_r": 0.589,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "fib_target": 4,
+    "bias_flip": 4
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 4
+   },
+   "dominance": {
+    "total_net_r": 4.713,
+    "top1_net_r": 3.275,
+    "net_ex_top1": 1.438,
+    "net_ex_top2": -1.575,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.574,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 2.388,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.962,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "fib_target",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 3.275,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "fib_target",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 3.013,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -1.15,
+    "worst_combined_adverse_r": -5.57
+   }
+  },
+  "resistance_rejection|long_single": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 1.095,
+   "avg_net_r": 1.095,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "resistance_rejection": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.17,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 1.095,
+    "top1_net_r": 1.095,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 1.095,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "resistance_rejection|both_single": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 4,
+   "win_rate": 0.5,
+   "net_r": 5.972,
+   "avg_net_r": 0.747,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "resistance_rejection": 3,
+    "bias_flip": 5
+   },
+   "time_to_exit_days": {
+    "median": 0.08,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 3
+   },
+   "dominance": {
+    "total_net_r": 5.972,
+    "top1_net_r": 11.775,
+    "net_ex_top1": -5.803,
+    "net_ex_top2": -6.899,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.574,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 11.775,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.246,
+     "mae_pct": -0.2,
+     "mae_r": -0.5
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": -0.729,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 1.095,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "resistance_rejection|long_concurrent": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 1.095,
+   "avg_net_r": 1.095,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "resistance_rejection": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.17,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 1.095,
+    "top1_net_r": 1.095,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 1.095,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.0,
+    "worst_combined_adverse_r": -0.01
+   }
+  },
+  "resistance_rejection|both_concurrent": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 4,
+   "win_rate": 0.5,
+   "net_r": 5.972,
+   "avg_net_r": 0.747,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "resistance_rejection": 3,
+    "bias_flip": 5
+   },
+   "time_to_exit_days": {
+    "median": 0.08,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 3
+   },
+   "dominance": {
+    "total_net_r": 5.972,
+    "top1_net_r": 11.775,
+    "net_ex_top1": -5.803,
+    "net_ex_top2": -6.899,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.574,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 11.775,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.246,
+     "mae_pct": -0.2,
+     "mae_r": -0.5
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": -0.729,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "resistance_rejection",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 1.095,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -1.15,
+    "worst_combined_adverse_r": -5.57
+   }
+  },
+  "min_move_first_profit|long_single": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 0.808,
+   "avg_net_r": 0.808,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "min_move_profit": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.04,
+    "max": 0.04,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 0.808,
+    "top1_net_r": 0.808,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "min_move_first_profit|both_single": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 5.704,
+   "avg_net_r": 0.713,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "min_move_profit": 6,
+    "bias_flip": 2
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 6
+   },
+   "dominance": {
+    "total_net_r": 5.704,
+    "top1_net_r": 4.405,
+    "net_ex_top1": 1.3,
+    "net_ex_top2": -1.654,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 2.954,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.757,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 4.405,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.987,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.879,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "min_move_first_profit|long_concurrent": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 0.808,
+   "avg_net_r": 0.808,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "min_move_profit": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.04,
+    "max": 0.04,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 0.808,
+    "top1_net_r": 0.808,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.0,
+    "worst_combined_adverse_r": -0.01
+   }
+  },
+  "min_move_first_profit|both_concurrent": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 5.704,
+   "avg_net_r": 0.713,
+   "worst_mae_pct": -1.15,
+   "worst_mae_r": -5.57,
+   "exit_reasons": {
+    "min_move_profit": 6,
+    "bias_flip": 2
+   },
+   "time_to_exit_days": {
+    "median": 0.04,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 6
+   },
+   "dominance": {
+    "total_net_r": 5.704,
+    "top1_net_r": 4.405,
+    "net_ex_top1": 1.3,
+    "net_ex_top2": -1.654,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 2.954,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 0.757,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": -2.741,
+     "mae_pct": -1.05,
+     "mae_r": -3.2
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 4.405,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 1.987,
+     "mae_pct": 0.0,
+     "mae_r": 0.0
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "min_move_profit",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.879,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 7,
+     "days_held": 0.29,
+     "net_r": -4.345,
+     "mae_pct": -1.15,
+     "mae_r": -5.57
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "min_move_profit",
+     "bars_held": 1,
+     "days_held": 0.04,
+     "net_r": 0.808,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -1.15,
+    "worst_combined_adverse_r": -5.57
+   }
+  },
+  "trailing_once_profitable|long_single": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 1.118,
+   "avg_net_r": 1.118,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "trailing_stop": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.12,
+    "p90": 0.12,
+    "max": 0.12,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 1.118,
+    "top1_net_r": 1.118,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 1.118,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "trailing_once_profitable|both_single": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 10.649,
+   "avg_net_r": 1.331,
+   "worst_mae_pct": -0.49,
+   "worst_mae_r": -2.95,
+   "exit_reasons": {
+    "trailing_stop": 7,
+    "bias_flip": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.08,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 7
+   },
+   "dominance": {
+    "total_net_r": 10.649,
+    "top1_net_r": 6.761,
+    "net_ex_top1": 3.888,
+    "net_ex_top2": 1.863,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 2.025,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 0.047,
+     "mae_pct": -0.42,
+     "mae_r": -1.29
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 6.761,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.624,
+     "mae_pct": -0.2,
+     "mae_r": -0.5
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.886,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.628,
+     "mae_pct": -0.49,
+     "mae_r": -2.38
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 1.118,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ]
+  },
+  "trailing_once_profitable|long_concurrent": {
+   "n_admitted": 1,
+   "resolved": 1,
+   "unresolved": 0,
+   "wins": 1,
+   "win_rate": 1.0,
+   "net_r": 1.118,
+   "avg_net_r": 1.118,
+   "worst_mae_pct": -0.0,
+   "worst_mae_r": -0.01,
+   "exit_reasons": {
+    "trailing_stop": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.12,
+    "p90": 0.12,
+    "max": 0.12,
+    "n": 1
+   },
+   "dominance": {
+    "total_net_r": 1.118,
+    "top1_net_r": 1.118,
+    "net_ex_top1": 0.0,
+    "net_ex_top2": null,
+    "single_trade_flips_sign": true
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=1 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 1.118,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.0,
+    "worst_combined_adverse_r": -0.01
+   }
+  },
+  "trailing_once_profitable|both_concurrent": {
+   "n_admitted": 8,
+   "resolved": 8,
+   "unresolved": 0,
+   "wins": 6,
+   "win_rate": 0.75,
+   "net_r": 10.649,
+   "avg_net_r": 1.331,
+   "worst_mae_pct": -0.49,
+   "worst_mae_r": -2.95,
+   "exit_reasons": {
+    "trailing_stop": 7,
+    "bias_flip": 1
+   },
+   "time_to_exit_days": {
+    "median": 0.08,
+    "p90": 0.17,
+    "max": 0.17,
+    "n": 7
+   },
+   "dominance": {
+    "total_net_r": 10.649,
+    "top1_net_r": 6.761,
+    "net_ex_top1": 3.888,
+    "net_ex_top2": 1.863,
+    "single_trade_flips_sign": false
+   },
+   "gate": {
+    "skipped_by_cap": 0,
+    "skipped_single_gate": 0,
+    "concurrency_utilization": 0
+   },
+   "small_sample_flag": "n=8 \u2014 descriptive only, not a test",
+   "trades": [
+    {
+     "entry_ts": "2026-01-08T03:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 4,
+     "days_held": 0.17,
+     "net_r": 2.025,
+     "mae_pct": -0.43,
+     "mae_r": -1.38
+    },
+    {
+     "entry_ts": "2026-01-19T18:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "bias_flip",
+     "bars_held": 5,
+     "days_held": 0.21,
+     "net_r": 0.587,
+     "mae_pct": -0.34,
+     "mae_r": -0.65
+    },
+    {
+     "entry_ts": "2026-03-17T23:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 0.047,
+     "mae_pct": -0.42,
+     "mae_r": -1.29
+    },
+    {
+     "entry_ts": "2026-03-18T10:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 6.761,
+     "mae_pct": -0.17,
+     "mae_r": -0.64
+    },
+    {
+     "entry_ts": "2026-03-19T11:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": 1.624,
+     "mae_pct": -0.2,
+     "mae_r": -0.5
+    },
+    {
+     "entry_ts": "2026-03-22T19:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.886,
+     "mae_pct": -0.45,
+     "mae_r": -2.95
+    },
+    {
+     "entry_ts": "2026-04-30T04:59:59.999000+00:00",
+     "dir": "SHORT",
+     "exit_reason": "trailing_stop",
+     "bars_held": 2,
+     "days_held": 0.08,
+     "net_r": -0.628,
+     "mae_pct": -0.49,
+     "mae_r": -2.38
+    },
+    {
+     "entry_ts": "2026-05-24T22:59:59.999000+00:00",
+     "dir": "LONG",
+     "exit_reason": "trailing_stop",
+     "bars_held": 3,
+     "days_held": 0.12,
+     "net_r": 1.118,
+     "mae_pct": -0.0,
+     "mae_r": -0.01
+    }
+   ],
+   "combined_exposure": {
+    "max_concurrent": 1,
+    "worst_combined_adverse_pct": -0.49,
+    "worst_combined_adverse_r": -2.95
+   }
+  }
+ }
+}
