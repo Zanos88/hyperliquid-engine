@@ -230,12 +230,116 @@ def phase_sf():
     print("\nwritten: research/output/batch5_sf.json")
 
 
+def _track4_series():
+    from track4_mean_reversion import bias_direction_series
+    from strategy.trigger_1h import fisher_transform
+    from strategy.atr import wilder_atr
+    c4, _ = load_snapshot("4h")
+    bc, _ = load_snapshot("12h")
+    dirs, btimes = bias_direction_series(bc, 30)
+    fisher = fisher_transform(c4)[0]
+    atr = wilder_atr(c4)
+    return c4, dirs, btimes, fisher, atr
+
+
+def _run_sa_cell(c4, dirs, btimes, fisher, atr, stop_mult, target_mode):
+    """One S-A cell. stop_mult in {None,2.5,3.5}; target_mode in
+    {'first_profit',0.5,1.0,1.5}. R distance = (stop_mult or 3.5)*ATR@entry;
+    no-stop cells report R-equiv vs 3.5*ATR. Long-only, exit = first of
+    {stop, R-target/first_profit, Fisher>=+1.5}."""
+    from bisect import bisect_right
+    FEE = 0.00075
+    WARM = 60
+    n = len(c4)
+    trades, pos = [], [0] * n
+    open_t = None
+    for i in range(WARM, n):
+        c = c4[i]
+        if open_t is not None:
+            e, stop, tgt, rdist = open_t["entry"], open_t["stop"], open_t["target"], open_t["rdist"]
+            open_t["mae"] = min(open_t["mae"], c.low / e - 1)
+            exit_px = reason = None
+            if stop is not None and c.low <= stop:
+                exit_px, reason = stop, "stop"
+            elif tgt is not None and c.high >= tgt:
+                exit_px, reason = tgt, "target"
+            elif target_mode == "first_profit" and (c.close / e - 1) - 2 * FEE > 0:
+                exit_px, reason = c.close, "first_profit"
+            elif fisher[i] >= 1.5:
+                exit_px, reason = c.close, "fisher_reversal"
+            if exit_px is not None:
+                net = (exit_px / e - 1) - 2 * FEE
+                open_t.update(exit_i=i, net_pct=net * 100, r=net / (rdist / e),
+                              bars_held=i - open_t["entry_i"], exit_reason=reason)
+                trades.append(open_t)
+                for k in range(open_t["entry_i"], i + 1):
+                    pos[k] = 1
+                open_t = None
+            continue
+        bj = bisect_right(btimes, c.close_time_ms) - 1
+        b = dirs[bj] if bj >= 0 else 0
+        if fisher[i] <= -1.25 and b == 1 and atr[i] > 0:
+            rdist = (stop_mult or 3.5) * atr[i]
+            stop = c.close - stop_mult * atr[i] if stop_mult else None
+            tgt = c.close + target_mode * rdist if target_mode != "first_profit" else None
+            open_t = {"entry_i": i, "entry": c.close, "stop": stop, "target": tgt,
+                      "rdist": rdist, "mae": 0.0}
+    return trades, pos
+
+
+def phase_sa():
+    c4, dirs, btimes, fisher, atr = _track4_series()
+    rets4 = log_returns(c4)
+    a4 = 61
+    ppy = 6 * 365.0
+    stops = [(None, "none"), (2.5, "2.5xATR"), (3.5, "3.5xATR")]
+    targets = [("first_profit", "first_profit"), (0.5, "+0.5R"), (1.0, "+1.0R"), (1.5, "+1.5R")]
+    print("=== S-A: Track 4 joint stop x target grid (adjudicates Comp NULL) ===")
+    cells, any_stopped_survives = [], False
+    for sm, sl in stops:
+        for tm, tl in targets:
+            trades, pos = _run_sa_cell(c4, dirs, btimes, fisher, atr, sm, tm)
+            nets = [t["net_pct"] for t in trades]
+            rs = [t["r"] for t in trades]
+            wins = sum(1 for x in nets if x > 0)
+            gl = abs(sum(r for r in rs if r <= 0))
+            gw = sum(r for r in rs if r > 0)
+            net_pos = sum(nets) > 0
+            sharpe = bs.annualized_sharpe(net_strategy_returns(pos, rets4)[a4:], ppy)
+            bar = bs.block_bootstrap_family_bar(rets4[a4:], [pos[a4:]], ppy, 20 * 6, REPS)["bar"]
+            stopped = sm is not None
+            passes = stopped and net_pos and sharpe > bar
+            if passes:
+                any_stopped_survives = True
+            cells.append({"stop": sl, "target": tl, "stopped": stopped,
+                          "trades": len(trades), "wins": wins,
+                          "sum_net_pct": round(sum(nets), 2), "sum_r": round(sum(rs), 2),
+                          "pf": round(gw / gl, 2) if gl > 0 else None,
+                          "worst_mae_pct": round(min((t["mae"] for t in trades), default=0) * 100, 2),
+                          "sharpe": round(sharpe, 3), "block_bar": round(bar, 3),
+                          "net_positive": net_pos, "kill_pass": passes})
+            print(f"  stop {sl:8} tgt {tl:12}: n={len(trades):2d} W={wins:2d} "
+                  f"netR {sum(rs):+6.2f} net% {sum(nets):+7.2f} PF {cells[-1]['pf']} "
+                  f"Sharpe {sharpe:+.2f} vs bar {bar:.2f} worstMAE {cells[-1]['worst_mae_pct']}%"
+                  + ("  <-- STOPPED CELL SURVIVES" if passes else ""))
+    verdict = ("Comp NULL PREMATURE (>=1 stopped cell positive net AND clears block-boot bar)"
+               if any_stopped_survives else "Comp NULL CONFIRMED (no stopped cell survives)")
+    print(f"\nVERDICT: {verdict}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_sa.json").write_text(json.dumps(
+        {"cells": cells, "any_stopped_survives": any_stopped_survives,
+         "verdict": verdict}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_sa.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", required=True, choices=("sf",))
+    ap.add_argument("--phase", required=True, choices=("sf", "sa"))
     args = ap.parse_args()
     if args.phase == "sf":
         phase_sf()
+    elif args.phase == "sa":
+        phase_sa()
 
 
 if __name__ == "__main__":
