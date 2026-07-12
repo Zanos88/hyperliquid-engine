@@ -186,6 +186,35 @@ def main() -> None:
     check("historical trigger case reproduces under static config (blocked)",
           blocked is False)
 
+    print("=== scenario 6: activation-flip rehearsal (Zane's Step-4 precondition) ===")
+    # Pre-flip reality: static config while PAPER trading ratchets the HWM.
+    set_config(conn, "static", 6, 3)
+    reset_hwm(conn)
+    store.update_hwm(105_000)  # paper inflation before activation
+    check("pre-flip: paper-inflated HWM 105,000 (harmless under static config)",
+          store.get_hwm() == 105_000)
+    # The EXACT Step-4 flip transaction from the doc: config -> Gold 2-Step
+    # + DIRECT reset of the HWM to the real account equity (100,000).
+    conn.execute("BEGIN")
+    set_config(conn, "trailing", 8, 5)
+    conn.execute("UPDATE equity_hwm SET hwm=%s, updated_at=now() WHERE id=1", (100_000,))
+    conn.execute("COMMIT")
+    check("flip: direct reset DID lower the HWM to 100,000", store.get_hwm() == 100_000)
+    cfg_flipped = store.get_challenge_config()
+    floor_after = binding_floor(cfg_flipped, day_start_equity=100_000, hwm=store.get_hwm())
+    check("post-flip floors recompute from the RESET base "
+          "(daily 95,000 binds over dd 92,000 — not 96,600 from the paper peak)",
+          abs(floor_after - 95_000) < 1e-6, f"floor {floor_after:,.2f}")
+    check("ratchet integrity survives the reset: update_hwm(99,000) cannot lower",
+          store.update_hwm(99_000) == 100_000)
+    check("normal ratcheting resumes: update_hwm(101,000) -> 101,000",
+          store.update_hwm(101_000) == 101_000)
+    g6 = Guardian(store=store, execution=FakeExecution(), day_start_equity=100_000,
+                  telegram=None, challenge_cfg=cfg_flipped, hwm=store.get_hwm())
+    check("guardian built post-flip reads the correct trailing floor",
+          abs(g6.binding_floor() - binding_floor(cfg_flipped, 100_000, 101_000)) < 1e-6,
+          f"floor {g6.binding_floor():,.2f}")
+
     # leave staging in the seed state
     set_config(conn, "static", 6, 3)
     reset_hwm(conn)
