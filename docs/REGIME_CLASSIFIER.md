@@ -76,3 +76,40 @@ expansion. **The 2021 bull being uncaptured is deliberately left as-is** —
 adjusting the definition to capture it after the fact is exactly the circularity
 this study exists to avoid. It directly foreshadows the Part C gate.
 
+## Part C — regime-instance count (the GATE before Part D)
+
+Maximal contiguous runs ≥ **21 days**, then runs of the same label separated by
+≤ **90 days** merged into distinct episodes (`research/output/regime_instances.json`).
+Panel assets have **no per-asset funding frozen**, so their funding component
+abstains → they are classified from structure + halving only (2-of-2).
+
+**BTC 1d — 4 bull episodes, 1 bear episode:**
+
+| | dates | days |
+|---|---|---|
+| bull | 2020-10-14 → 2021-02-24 | 134 |
+| bull | 2023-10-08 → 2024-02-24 | 140 |
+| bull | 2024-11-15 → 2024-12-27 | 43 |
+| bull | 2025-04-27 → 2025-05-23 | 27 |
+| bear | 2025-06 | 23 |
+
+**Panel (6 alts):** 24 bull episodes total, **near-zero bear** (XRP 1, the other
+five **zero**). They co-move (N_eff ≈ 2, factor study) and share BTC's halving
+calendar and the same macro cycles — **not 6 independent instances.**
+
+### Gate verdict — split by direction, unhedged
+
+- **BULL: marginally testable, low power.** BTC's 4 bull episodes cluster into
+  **~2 independent macro cycles** (2020–21 and 2023–25; the latter split into 3
+  short episodes by the 90-day rule). Two independent cycles of short (27–140d)
+  episodes is better than "one lucky stretch," but it is still very low power —
+  a bull-regime edge resting on essentially two cycles cannot be strongly
+  distinguished from cycle-specific luck. **Part D bull verdicts are capped at
+  *suggestive*, never *proven*.**
+- **BEAR: not testable.** BTC has a single 23-day bear episode (2025-06 — not
+  even the 2022 bear, which the locked rule scores NEUTRAL: structure BEAR but
+  halving in "accumulation" and funding abstaining). Five of seven assets have
+  zero bear episodes. **The classifier does not identify bear regimes in this
+  record**, so **every Part D bear-regime verdict is *insufficient-data* by
+  construction** — a property of the locked definition, reported not patched.
+

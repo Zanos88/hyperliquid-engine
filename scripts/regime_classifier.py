@@ -172,6 +172,77 @@ def phase_labels() -> None:
     print(f"written: {OUTPUT_DIR / 'regime_labels_btc.json'}")
 
 
+PANEL = ("ETH", "SOL", "DOGE", "XRP", "AVAX", "LINK")
+EPISODE_GAP_DAYS = 90          # Part C reporting: merge same-label runs closer than this
+
+
+def load_asset_1d(coin: str):
+    from data.feed import Candle
+    doc = json.loads((DATA_DIR / f"{coin}_1d_snapshot.json").read_text(encoding="utf-8"))
+    return [Candle(*row) for row in doc["candles"]]
+
+
+def _runs_and_episodes(labels, target, min_run=MIN_RUN_DAYS, gap=EPISODE_GAP_DAYS):
+    """Maximal contiguous runs of `target` (>= min_run bars), then merge runs
+    separated by <= gap bars of other labels into distinct episodes."""
+    runs, s = [], None
+    for i, r in enumerate(labels):
+        if r["label"] == target:
+            s = i if s is None else s
+        elif s is not None:
+            if i - s >= min_run:
+                runs.append((s, i - 1))
+            s = None
+    if s is not None and len(labels) - s >= min_run:
+        runs.append((s, len(labels) - 1))
+    episodes = []
+    for a, b in runs:
+        if episodes and a - episodes[-1][1] <= gap:
+            episodes[-1] = (episodes[-1][0], b)
+        else:
+            episodes.append((a, b))
+    fmt = lambda a, b: {"from": labels[a]["date"], "to": labels[b]["date"], "days": b - a + 1}
+    return [fmt(a, b) for a, b in runs], [fmt(a, b) for a, b in episodes]
+
+
+def phase_instances() -> None:
+    funding = load_funding_rows()
+    out = {}
+    print(f"regime instances (min run {MIN_RUN_DAYS}d, episode-merge gap {EPISODE_GAP_DAYS}d)\n")
+    for coin in ("BTC",) + PANEL:
+        candles = load_snapshot("1d")[0] if coin == "BTC" else load_asset_1d(coin)
+        # panel assets have NO per-asset funding frozen -> funding abstains (structure+halving)
+        labels = classify(candles, funding if coin == "BTC" else [])
+        bull_runs, bull_eps = _runs_and_episodes(labels, "BULL")
+        bear_runs, bear_eps = _runs_and_episodes(labels, "BEAR")
+        out[coin] = {"bull_runs": bull_runs, "bull_episodes": bull_eps,
+                     "bear_runs": bear_runs, "bear_episodes": bear_eps}
+        print(f"{coin:5} BULL: {len(bull_runs)} runs / {len(bull_eps)} episodes | "
+              f"BEAR: {len(bear_runs)} runs / {len(bear_eps)} episodes")
+        for e in bull_eps:
+            print(f"       bull episode {e['from']} .. {e['to']} ({e['days']}d)")
+
+    btc_bull_eps = len(out["BTC"]["bull_episodes"])
+    panel_bull_eps = sum(len(out[c]["bull_episodes"]) for c in PANEL)
+    gate = (f"BTC = {btc_bull_eps} independent bull episode(s). "
+            + ("INSUFFICIENT: one bull episode cannot separate 'bull-market strategy' "
+               "from 'that one lucky 2024-25 stretch' — Part D bull verdicts are capped "
+               "at insufficient-data." if btc_bull_eps <= 1 else
+               "Multiple bull episodes exist; regime dependence is testable, with care."))
+    caveat = (f"Panel adds {panel_bull_eps} bull episodes across 6 alts, but they CO-MOVE "
+              "(N_eff ~ 2 from the factor study) and share BTC's halving calendar + the same "
+              "macro cycles - they are NOT 6 independent instances.")
+    print(f"\nGATE: {gate}\n{caveat}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "regime_instances.json").write_text(json.dumps(
+        {"generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         "min_run_days": MIN_RUN_DAYS, "episode_gap_days": EPISODE_GAP_DAYS,
+         "panel_funding": "abstains (no per-alt funding frozen; structure+halving only)",
+         "gate": gate, "co_movement_caveat": caveat, "by_asset": out}, indent=1),
+        encoding="utf-8")
+    print(f"written: {OUTPUT_DIR / 'regime_instances.json'}")
+
+
 def phase_selfcheck() -> None:
     from strategy.bias_4h import Swing
     U, D = SwingDirection.UP, SwingDirection.DOWN
@@ -220,8 +291,10 @@ def main() -> None:
         phase_selfcheck()
     elif args.phase == "labels":
         phase_labels()
+    elif args.phase == "instances":
+        phase_instances()
     else:
-        raise SystemExit(f"phase {args.phase} is added in a later commit (Part C/D)")
+        raise SystemExit(f"phase {args.phase} is added in a later commit (Part D)")
 
 
 if __name__ == "__main__":
