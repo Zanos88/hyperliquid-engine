@@ -1,0 +1,169 @@
+# Trend Engine — Let-Winners-Run Exits × Long-Only vs Both
+
+Run 2026-07-12. Spot-capital accumulation framing, **NOT the Propr/comp
+account**. Brief: `TREND_ENGINE_LET_WINNERS_RUN.md`. Machine-readable (full
+per-trade tables + three-way reconciliation): `research/output/trend_let_winners_run.json`.
+
+> **SIMULATED — not live, not comp.** Idealized touch/close fills, no slippage/
+> funding, taker 0.075%/side. Frozen 4H/1H BTC snapshots, window **2025-12-12 →
+> 2026-07-09** (~209 days). Fixed entries = the same 8 the +2.86R baseline
+> produced (`docs/CORRECTED_BASELINE_4H1H.md`), reused unchanged. **Five exit
+> models × four scenarios = 20 runs, all reported. Combinations DEFERRED** —
+> chosen from these individual results only, with a separate go-ahead.
+
+## Read this first — two facts that frame everything
+
+1. **Long-only is n = 1.** The 8 entries are **7 SHORT + 1 LONG**. The two
+   long-only scenarios contain exactly one trade (the 2026-05-24 long). They are
+   reported in full below but are **descriptive only — no verdict is possible on
+   the long side in this window.** The brief's premise — "test the long side
+   free of the short-side luck that inflated the last result" — *cannot be
+   answered here*: this 209-day window barely has a long side. (The 1H
+   5,000-bar retention caps how far back longs could be found.)
+
+2. **Concurrency never triggered.** The maximum hold across *all* trades under
+   *any* model is **0.29 days (~7 hours)**; entries are days apart. So no two
+   positions were ever open at once: **scenarios 3–4 (concurrent) are byte-for-
+   byte identical to scenarios 1–2 (single)** — utilization 0, the cap-of-3
+   never bound, combined exposure = single-position worst. This is the honest
+   "the design choice didn't matter here" outcome the brief anticipated. It also
+   means **"let winners run" never actually ran long** — every exit resolved
+   within hours, same fast-resolution regime as the prior study.
+
+## Cross-checks (the study is only meaningful if these hold)
+
+| Check | Expected | Got |
+|---|---|---|
+| Stopped baseline on snapshot | 8 / 4–4 / +2.86R / PF 1.43 / maxDD 3.72R | **exact** |
+| `first_profit` all-8 ungated sum | +5.70R (prior `trend_no_stop.py`) | **+5.70R** |
+
+Entries identical by construction → the three-way per-trade reconciliation is
+valid.
+
+## The 20-run matrix
+
+Net R is per scenario; long-only cells are **n=1**; concurrent = single (no
+overlap). "worst MAE" reported in % **and** R (the unit-illusion catch).
+
+| Exit model | long single (n=1) | **both (n=8)** | worst MAE %/R (both) | notes |
+|---|---|---|---|---|
+| first_profit | +0.81 | **+5.70** | −1.15% / −5.57R | prior study baseline |
+| fib_target | +3.01 | **+4.71** | −1.15% / −5.57R | *worse than first-profit* |
+| resistance_rejection | +1.09 | **+5.97** | −1.15% / −5.57R | one trade carries it |
+| min_move_first_profit | +0.81 | **+5.70** | −1.15% / −5.57R | inert (= first-profit) |
+| trailing_once_profitable | +1.12 | **+10.65** | **−0.49% / −2.95R** | best, but see caveats |
+
+(Concurrent scenarios omitted from the table — identical to single. Full cells,
+including `both_concurrent` with `max_concurrent=1` and zero utilization, are in
+the JSON.)
+
+## Both-directions, per model (n=8 — the real content)
+
+### first_profit — +5.70R (baseline)
+The prior study's result, reproduced. 6 reversion, 2 bias_flip. Established
+NULL: regime-and-asymmetry-flattered, one-trade-sensitive, n=8. Included only as
+the comparison point.
+
+### fib_target — +4.71R — **the principled fix underperforms**
+Letting winners run to the engine's own fib-extension target returned *less*
+than first-profit. The three-way shows why: on the two early shorts (01-08,
+01-19) **the 4H bias flipped before the target was reached**, so the brake cut
+them (fp +2.95/+0.76 → fib +0.57/+0.59). Holding longer for the target exposes
+the trade to the brake — **4 of 8 exited via bias_flip vs first-profit's 2**.
+The intended fix and the catastrophe brake are in direct tension. Dominance:
+net-excluding-top-2 = **−1.58R** — the positive total is its two best trades
+(03-22 +3.27, 05-24 +3.01); without them it is negative.
+
+### resistance_rejection — +5.97R — **fails the dominance check outright**
+Top single trade **+11.78R**; **net excluding it = −5.80R** →
+`single_trade_flips_sign = TRUE`. The entire positive result is one rejection
+trade; the other seven net negative (5 exited on the brake, only 3 on an actual
+rejection). This is exactly the "headline is one lucky trade" failure that
+killed the prior study's number. NULL.
+
+### min_move_first_profit — +5.70R — **inert**
+Identical to first-profit to the decimal. The 1R arm threshold is non-binding:
+because the R:R gate admits tight structural stops, 1R is a tiny price move
+(~0.2–1%), reached before the profitable close on every trade. The gate changed
+nothing. NULL, no effect.
+
+### trailing_once_profitable — +10.65R — **best, and the most interesting, but not proven**
+Highest return *and* the shallowest tail (worst MAE −0.49% / **−2.95R** vs the
+−5.57R hostage everywhere else). 7 of 8 exited via the trailing stop. But four
+caveats, in order of weight:
+- **One trade is 63% of it.** The 03-18 short returned **+6.76R** (trailing rode
+  a sharp intraday drop far past the +2.39R the target took and the +4.41R
+  first-profit took). Net-excluding-top-1 = +3.89R (still positive — it does
+  *not* flip sign, unlike resistance_rejection), but the headline leans hard on
+  one sharp short.
+- **It didn't actually "let winners run."** Max hold 0.21 days. The gain is from
+  capturing more of *fast* moves, not from patience — the same kind-to-shorts
+  chop window as before.
+- **It works by putting a stop back in.** "Trailing once +1R" is a profit-
+  locking *stop*. The best-performing variant is the one that **reintroduces
+  disciplined risk control** (which is also why its tail is the shallowest — it
+  exits the two prior hostages at 03-17 +0.05 and 04-30 −0.63 instead of letting
+  the brake catch them at −2.74/−4.34). This is the opposite of "no stop."
+- **n = 8, 7 shorts, one window.** Same small-sample, same regime.
+
+## Trade-by-trade three-way reconciliation (both-directions, trailing vs the two baselines)
+
+| Entry | Dir | Stopped | first_profit | **trailing** | Held |
+|---|---|---|---|---|---|
+| 2026-01-08 | SHORT | stop −1.49 | rev +2.95 | trail **+2.02** | 0.17d |
+| 2026-01-19 | SHORT | target +2.17 | rev +0.76 | bias_flip +0.59 | 0.21d |
+| 2026-03-17 | SHORT | stop −1.46 | bias_flip −2.74 | trail **+0.05** | 0.08d |
+| 2026-03-18 | SHORT | target +2.39 | rev +4.41 | trail **+6.76** | 0.12d |
+| 2026-03-19 | SHORT | target +1.96 | rev +1.99 | trail +1.62 | 0.08d |
+| 2026-03-22 | SHORT | stop −1.99 | rev +1.88 | trail −0.89 | 0.08d |
+| 2026-04-30 | SHORT | stop −1.73 | bias_flip −4.34 | trail **−0.63** | 0.08d |
+| 2026-05-24 | LONG | target +3.01 | rev +0.81 | trail +1.12 | 0.12d |
+
+The trailing stop's edge over first-profit is: (a) the 03-18 ratchet (+6.76 vs
++4.41), and (b) rescuing the two first-profit hostages (03-17, 04-30) by exiting
+them near breakeven instead of on the brake. Both are the trailing *stop* doing
+the work — not "letting winners run."
+
+## Verdict per scenario
+
+- **Long-only (single & concurrent): NO VERDICT — n = 1.** Not evaluable in this
+  window. The design's long-side support, which the brief specifically wanted,
+  remains untested because only one long entry exists here. State plainly: this
+  is a power failure, not a result.
+- **Both-directions (single & concurrent, identical): NULL / inconclusive.** No
+  exit rule produces a defensible edge on this evidence:
+  - the principled fix (`fib_target`) *underperforms* first-profit because the
+    bias-flip brake cuts winners before the target;
+  - `resistance_rejection`'s positive total is a single trade (flips sign
+    without it);
+  - `min_move` is inert;
+  - `trailing_once_profitable` is the standout (+10.65R, best tail) but is
+    one-trade-heavy (63%), never actually held long (≤0.21d), regime-bound
+    (n=8, 7 shorts), and achieves its result by **reintroducing a trailing
+    stop** — i.e. the lesson is "disciplined risk control helps," not "no stop
+    plus let-run helps."
+- **Concurrency: did not matter.** Zero overlap; scenarios 3–4 ≡ 1–2.
+
+**No forward-test candidate is promoted.** The fix does not soften the verdict:
+correcting the exit did not reveal an edge; it revealed that (a) the brake and a
+run-to-target exit fight each other, and (b) the only variant that looks good is
+the one that adds a stop back.
+
+**The one idea worth a purpose-built, pre-registered next study** (not licensed
+by this n=8, short-heavy run): **`trailing_once_profitable` as a stand-alone
+design** — a profit-locking trailing stop with *no* fixed target and the bias-
+flip brake — evaluated on a window with a real long side and at least one
+sustained trend, with the trail trigger/distance pre-registered (here fixed at
+1R/1R, flagged, untuned). That is a different experiment; combinations of these
+five exits remain deferred pending a separate go-ahead.
+
+## Design choices (flagged, not tuned)
+Concurrent cap **3**; min-move arm **1R**; trailing arm **1R**; trailing
+distance **1R** (the brief fixed the trigger, left the distance open — 1R for
+symmetry). None were swept.
+
+## Reproduce
+```powershell
+python scripts/trend_let_winners_run.py --selfcheck
+python scripts/trend_let_winners_run.py --phase run
+```
