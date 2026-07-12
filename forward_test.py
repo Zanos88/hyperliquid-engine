@@ -37,11 +37,14 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from bisect import bisect_right
+
 from alerts.telegram import TelegramClient, TelegramConfigError
 from data.feed import fetch_candles
 from db.store import TelemetryStore
 from strategy.timeframes import interval_seconds
 from strategy.trend_rules import sma_positions, tsmom_positions
+from strategy.trigger_1h import fisher_transform, sma
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("forward_test")
@@ -60,6 +63,62 @@ STRATEGIES = {
     "sma50": lambda cs: sma_positions(cs, 50),
     "buy_hold": lambda cs: [1] * len(cs),
 }
+
+# ── Track 4 mean-reversion track (4H trigger / 12H bias) ────────────────
+# Design frozen by Round 4 / Track 4-Comp / Study 2 / Round 6
+# (docs/TRACK4_UNCONSTRAINED_MEAN_REVERSION.md): long-only, 4H Fisher
+# <= -1.25 during a 12H-SMA30 uptrend, exit on first profitable close,
+# no stop, no cap. This reimplements that same validated rule as a 0/1
+# position series (matching tsmom30/sma50's shape) so it can share the
+# tick loop's bar-by-bar marking/fee/flip-alert machinery unchanged;
+# scripts/track4_mean_reversion.py remains the source of truth for the
+# backtest sweeps this was validated against.
+TRACK4_NAME = "track4_meanrev"
+TRACK4_TF = "4h"
+TRACK4_BIAS_TF = "12h"
+TRACK4_THRESHOLD = 1.25
+TRACK4_SMA_WINDOW = 30
+TRACK4_REVERSAL_EXIT_LEVEL = 1.5
+TRACK4_LOOKBACK_BARS = 300      # ~50 days of 4H; max observed hold was 16.2 days
+TRACK4_BIAS_LOOKBACK_BARS = 300  # ~150 days of 12H, ample warmup for SMA30
+TRACK4_MIN_HISTORY = 60         # matches WARMUP_4H in track4_mean_reversion.py
+
+
+def track4_bias_dirs(bias_candles) -> tuple[list[int], list[int]]:
+    closes = [c.close for c in bias_candles]
+    s = sma(closes, TRACK4_SMA_WINDOW)
+    dirs = [0 if i < TRACK4_SMA_WINDOW - 1
+            else (1 if closes[i] > s[i] else (-1 if closes[i] < s[i] else 0))
+            for i in range(len(closes))]
+    return dirs, [c.close_time_ms for c in bias_candles]
+
+
+def track4_meanrev_positions(candles_4h, bias_dirs, bias_close_ms) -> list[int]:
+    """0/1 position series: 1 while a long mean-reversion trade is open.
+    Long-only, entry Fisher<=-1.25 AND 12H-SMA30 uptrend, exit on first
+    profitable close (net of round-trip fee) or Fisher back through +1.5,
+    no stop, no cap — see the module docstring above."""
+    fisher = fisher_transform(candles_4h)[0]
+    pos = [0] * len(candles_4h)
+    in_trade = False
+    entry_price = 0.0
+    for i in range(TRACK4_MIN_HISTORY, len(candles_4h)):
+        c = candles_4h[i]
+        if in_trade:
+            net = (c.close / entry_price - 1) - 2 * FEE
+            if net > 0 or fisher[i] >= TRACK4_REVERSAL_EXIT_LEVEL:
+                in_trade = False
+                pos[i] = 0
+            else:
+                pos[i] = 1
+            continue
+        bj = bisect_right(bias_close_ms, c.close_time_ms) - 1
+        b = bias_dirs[bj] if bj >= 0 else 0
+        if fisher[i] <= -TRACK4_THRESHOLD and b == 1:
+            in_trade = True
+            entry_price = c.close
+            pos[i] = 1
+    return pos
 
 
 def _ms_to_utc(ms: int) -> datetime:
@@ -145,11 +204,62 @@ def tick(store: TelemetryStore, telegram: TelegramClient | None) -> bool:
                             name, _ms_to_utc(candles[j].close_time_ms).date(),
                             pos[j - 1], net, equity, " FLIP" if flipped else "")
 
+    # Track 4 mean-reversion (4H trigger / 12H bias) — its own block since
+    # it needs a second candle series, unlike the single-series STRATEGIES.
+    span4h = TRACK4_LOOKBACK_BARS * interval_seconds(TRACK4_TF) * 1000
+    candles_4h = fetch_candles(SYMBOL, TRACK4_TF, now_ms - span4h, now_ms)
+    span12h = TRACK4_BIAS_LOOKBACK_BARS * interval_seconds(TRACK4_BIAS_TF) * 1000
+    bias_candles = fetch_candles(SYMBOL, TRACK4_BIAS_TF, now_ms - span12h, now_ms)
+    if len(candles_4h) >= TRACK4_MIN_HISTORY + 1 and len(bias_candles) >= TRACK4_SMA_WINDOW:
+        bias_dirs, bias_close_ms = track4_bias_dirs(bias_candles)
+        pos4 = track4_meanrev_positions(candles_4h, bias_dirs, bias_close_ms)
+        lm4 = last_mark(conn, TRACK4_NAME)
+        if lm4 is None:
+            j = len(candles_4h) - 1
+            p = pos4[j]
+            net = -FEE * p
+            equity = START_EQUITY * math.exp(net)
+            if insert_mark(conn, TRACK4_NAME, candles_4h[j], p, net, equity, flipped=p != 0):
+                wrote = True
+                state = "LONG" if p else "FLAT"
+                inception_lines.append(f"{TRACK4_NAME}: {state} @ ${candles_4h[j].close:,.0f}")
+                logger.info("inception %s %s equity=%.2f", TRACK4_NAME, state, equity)
+        else:
+            last_open, equity = lm4[0], float(lm4[1])
+            if last_open < candles_4h[TRACK4_MIN_HISTORY].open_time_ms:
+                logger.error("%s: gap exceeds candle retention (last mark %s) — "
+                             "manual restart of the forward test required",
+                             TRACK4_NAME, last_open)
+            else:
+                for j in range(1, len(candles_4h)):
+                    if candles_4h[j].open_time_ms <= last_open:
+                        continue
+                    r = math.log(candles_4h[j].close / candles_4h[j - 1].close)
+                    delta = abs(pos4[j] - pos4[j - 1])
+                    net = pos4[j - 1] * r - FEE * delta
+                    equity *= math.exp(net)
+                    flipped = delta != 0
+                    if insert_mark(conn, TRACK4_NAME, candles_4h[j], pos4[j - 1], net,
+                                   equity, flipped):
+                        wrote = True
+                        if flipped and telegram is not None:
+                            pnl = (equity / START_EQUITY - 1) * 100
+                            state = "LONG" if pos4[j] else "FLAT"
+                            telegram.send(
+                                f"<b>{TAG} {TRACK4_NAME} FLIP → {state}</b> "
+                                f"@ ${candles_4h[j].close:,.0f} | paper equity "
+                                f"${equity:,.0f} ({pnl:+.1f}% since inception)",
+                                silent=False,
+                            )
+                        logger.info("mark %s bar=%s pos_into=%d net=%.5f equity=%.2f%s",
+                                    TRACK4_NAME, _ms_to_utc(candles_4h[j].close_time_ms),
+                                    pos4[j - 1], net, equity, " FLIP" if flipped else "")
+
     if inception_lines and telegram is not None:
         telegram.send(
-            f"<b>{TAG} forward test inception</b> — BTC 1D, $100k paper each, "
+            f"<b>{TAG} forward test inception</b> — $100k paper each, "
             f"fee 0.075%/side.\n" + "\n".join(inception_lines) +
-            "\nProtocol: docs/TREND_FORWARD_TEST.md (review gate ≥180d & ≥10 flips).",
+            "\nProtocol: docs/TREND_FORWARD_TEST.md (review gates per track).",
             silent=True,
         )
     return wrote
@@ -169,7 +279,7 @@ def report_text(conn, symbol: str = SYMBOL) -> str | None:
     if not rows:
         return None
     lines = [f"{'strategy':10s} {'marks':>5s} {'flips':>5s} {'equity':>12s} {'net%':>8s} "
-             f"{'pos':>4s}  window"]
+             f"{'pos':>4s} {'MAE%':>7s}  window"]
     for strategy, n, first, last_ts, flips in rows:
         eq_row = conn.execute(
             "SELECT equity, position, flipped FROM trend_forward_marks "
@@ -183,8 +293,40 @@ def report_text(conn, symbol: str = SYMBOL) -> str | None:
         # already stores the position held FROM inception.
         current = position if n == 1 else ((1 - position) if flipped else position)
         net = (equity / START_EQUITY - 1) * 100
+        mae_s = "-"
+        if current and strategy == TRACK4_NAME:
+            # This strategy's real risk lives in underwater depth, not win
+            # rate (docs/TRACK4_UNCONSTRAINED_MEAN_REVERSION.md) — surface
+            # current MAE on every report while a position is open, not
+            # just on entry/exit. Entry = the most recent flip-into-LONG
+            # mark (position=1, flipped=true, or the inception row itself
+            # if it started LONG); MAE = worst close since then vs entry.
+            entry_row = conn.execute(
+                # Entry anchor = the most recent flip (into LONG, since the
+                # position is currently open) OR the inception mark. NOTE: a
+                # RUNNING entry marks position=0/flipped=true (position held
+                # INTO the entry bar was flat), so this must NOT filter
+                # position=1 — that would only catch inception-LONG entries.
+                "SELECT bar_open_time_ms, close FROM trend_forward_marks "
+                "WHERE strategy = %s AND symbol = %s AND "
+                "(flipped = true OR bar_open_time_ms = "
+                " (SELECT min(bar_open_time_ms) FROM trend_forward_marks "
+                "  WHERE strategy = %s AND symbol = %s)) "
+                "ORDER BY bar_open_time_ms DESC LIMIT 1",
+                (strategy, symbol, strategy, symbol),
+            ).fetchone()
+            if entry_row:
+                entry_open_ms, entry_close = entry_row[0], float(entry_row[1])
+                min_close = conn.execute(
+                    "SELECT min(close) FROM trend_forward_marks WHERE strategy = %s "
+                    "AND symbol = %s AND bar_open_time_ms >= %s",
+                    (strategy, symbol, entry_open_ms),
+                ).fetchone()[0]
+                if min_close is not None:
+                    mae_s = f"{(float(min_close) / entry_close - 1) * 100:+.2f}"
         lines.append(f"{strategy:10s} {n:5d} {flips:5d} {equity:12,.2f} {net:+7.2f}% "
-                     f"{('LONG' if current else 'FLAT'):>4s}  {first:%Y-%m-%d} .. {last_ts:%Y-%m-%d}")
+                     f"{('LONG' if current else 'FLAT'):>4s} {mae_s:>7s}  "
+                     f"{first:%Y-%m-%d} .. {last_ts:%Y-%m-%d}")
     return "\n".join(lines)
 
 

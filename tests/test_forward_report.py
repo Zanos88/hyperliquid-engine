@@ -36,12 +36,12 @@ def conn():
     c.execute("DELETE FROM trend_forward_marks WHERE symbol = %s", (SYMBOL,))
 
 
-def _insert(conn, strategy, open_ms, position, flipped, equity):
+def _insert(conn, strategy, open_ms, position, flipped, equity, close=100.0):
     conn.execute(
         "INSERT INTO trend_forward_marks (bar_open_time_ms, bar_close_utc, strategy, "
         "symbol, close, position, bar_log_return, equity, flipped) "
-        "VALUES (%s, to_timestamp(%s/1000.0), %s, %s, 100, %s, 0, %s, %s)",
-        (open_ms, open_ms + 86_399_999, strategy, SYMBOL, position, equity, flipped),
+        "VALUES (%s, to_timestamp(%s/1000.0), %s, %s, %s, %s, 0, %s, %s)",
+        (open_ms, open_ms + 86_399_999, strategy, SYMBOL, close, position, equity, flipped),
     )
 
 
@@ -67,3 +67,30 @@ def test_report_is_deterministic_and_shows_post_flip_position(conn):
     flat_row = next(l for l in first.splitlines() if l.startswith("t_flat"))
     assert "LONG" in flip_row
     assert "FLAT" in flat_row
+
+
+def test_report_shows_mae_only_for_open_track4_position(conn):
+    from forward_test import TRACK4_NAME, report_text
+
+    day = 86_400_000
+    # RUNNING entry at 100 — the realistic tick-loop layout: the entry bar
+    # marks position=0 (position held INTO it was flat) with flipped=true;
+    # holding bars mark position=1/flipped=false. Dips to 90 (MAE -10%),
+    # recovers to 95 while still open — MAE must reflect the worst close
+    # since entry, not the latest close. (Guards the entry-anchor query
+    # against re-adding a position=1 filter, which would miss this entry.)
+    _insert(conn, TRACK4_NAME, 0, 0, True, 99_925, close=100.0)
+    _insert(conn, TRACK4_NAME, day, 1, False, 99_850, close=90.0)
+    _insert(conn, TRACK4_NAME, 2 * day, 1, False, 99_900, close=95.0)
+    # A flat, unrelated strategy must show "-" (no MAE for non-open positions).
+    _insert(conn, "t_flat", 0, 0, False, 100_000)
+
+    text = report_text(conn, symbol=SYMBOL)
+    t4_row = next(l for l in text.splitlines() if l.startswith(TRACK4_NAME))
+    flat_row = next(l for l in text.splitlines() if l.startswith("t_flat"))
+    assert "LONG" in t4_row
+    assert "-10.00" in t4_row
+    assert "      -" in flat_row  # MAE% column right-aligned width 7, "-" = no open position
+
+    # Determinism holds with the new column too.
+    assert report_text(conn, symbol=SYMBOL) == text

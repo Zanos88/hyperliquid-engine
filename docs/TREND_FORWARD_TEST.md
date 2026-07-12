@@ -20,12 +20,15 @@ but below the in-sample luck bar → forward test is the agreed instrument).
 | tsmom30 | long while close > close 30 daily bars ago, else flat | primary (top Sharpe in both tournaments) |
 | sma50 | long while close > SMA(50), else flat | shadow (second family) |
 | buy_hold | always long (one inception fee) | benchmark |
+| track4_meanrev | 4H Fisher ≤ −1.25 AND 12H-SMA30 uptrend → long; exit on first profitable close (or Fisher ≥ +1.5); no stop, no cap | added 2026-07-10 — Track 4's validated cell (docs/TRACK4_UNCONSTRAINED_MEAN_REVERSION.md) |
 
-BTC 1D, $100,000 paper equity per track, taker fee 0.075% per side on every
-position change. Marking convention identical to the tournaments: the
-position decided at the close of bar j earns bar j+1's log return; the fee
-lands on the flip bar. Positions are recomputed deterministically from
-candle history each tick, so marks are reproducible and restarts are exact.
+BTC 1D (1D tracks), $100,000 paper equity per track, taker fee 0.075% per
+side on every position change. Marking convention identical to the
+tournaments: the position decided at the close of bar j earns bar j+1's
+log return; the fee lands on the flip bar. Positions are recomputed
+deterministically from candle history each tick, so marks are reproducible
+and restarts are exact. `track4_meanrev` runs on the same convention but on
+4H bars (trigger) with a 12H bias series — see below.
 
 ## Mechanics
 
@@ -58,14 +61,28 @@ candle history each tick, so marks are reproducible and restarts are exact.
 
 ## Review gate (pre-registered — no promotion decision before this)
 
-Evaluate only when BOTH hold: **≥ 180 days elapsed AND ≥ 10 tsmom30
-flips.** Criteria at review: tsmom30 net > 0 AND Sharpe (from daily marks)
-≥ buy_hold's on the same marks. sma50 is contextual evidence, not a
-selection candidate (no picking the better track after the fact — that
-re-introduces the selection bias this program exists to avoid). Promotion
-to anything beyond paper is a separate, user-gated decision per the
-runbook's two-switch discipline. Early peeking at `--report` is expected
-and harmless; early *decisions* are the thing the gate forbids.
+**tsmom30/sma50/buy_hold:** evaluate only when BOTH hold: **≥ 180 days
+elapsed AND ≥ 10 tsmom30 flips.** Criteria at review: tsmom30 net > 0 AND
+Sharpe (from daily marks) ≥ buy_hold's on the same marks. sma50 is
+contextual evidence, not a selection candidate (no picking the better
+track after the fact — that re-introduces the selection bias this program
+exists to avoid).
+
+**track4_meanrev (added 2026-07-10):** evaluate only when BOTH hold:
+**≥ 180 days elapsed AND ≥ 10 completed trades** (an exit event — a
+flip from LONG back to FLAT). The 10-trade floor matches tsmom30's
+10-flip floor in spirit (comparable statistical weight, not a lower bar)
+and reflects this strategy's own backtest cadence — ~7.5 trades/year at
+threshold −1.25, so 180 days should supply roughly 3–4 trades on its own;
+the count floor, not the day floor, is expected to bind first for this
+track. Criteria at review: net > 0 AND worst observed MAE consistent with
+backtest (−16.5% of position on the validated cell) — a materially worse
+live MAE is itself informative and must be reported even if net is
+positive. No early promotion from either gate.
+
+Promotion to anything beyond paper is a separate, user-gated decision per
+the runbook's two-switch discipline. Early peeking at `--report` is
+expected and harmless; early *decisions* are the thing the gate forbids.
 
 ## Inception state (2026-07-09)
 
@@ -77,6 +94,11 @@ and harmless; early *decisions* are the thing the gate forbids.
 
 Both trend tracks starting FLAT is the system working: the current tape is
 below both trend thresholds. First flips will come from the data.
+
+`track4_meanrev` was added 2026-07-10 (its own inception tick, same
+mechanics) — see `--report` for its current state; report format now
+includes an MAE% column, populated only for this track while a position
+is open (its risk lives in underwater depth, not win rate).
 
 ## Ops
 
