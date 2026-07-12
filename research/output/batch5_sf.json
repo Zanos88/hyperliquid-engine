@@ -1,0 +1,93 @@
+{
+ "panels": [
+  {
+   "panel": "BTC_1d",
+   "best_variant": "tsmom30",
+   "best_sharpe": 0.773,
+   "old_bar": 1.4,
+   "new_block_bar": 1.399,
+   "old_verdict": "NULL",
+   "new_verdict": "NULL",
+   "deflated_sharpe": 0.543,
+   "null_median": 0.537
+  },
+  {
+   "panel": "BTC_12h",
+   "best_variant": "sma200",
+   "best_sharpe": 0.906,
+   "old_bar": 1.59,
+   "new_block_bar": 1.704,
+   "old_verdict": "NULL",
+   "new_verdict": "NULL",
+   "deflated_sharpe": 0.569,
+   "null_median": 0.71
+  },
+  {
+   "panel": "breadth",
+   "best_variant": "tsmom30",
+   "best_sharpe": 0.783,
+   "old_bar": 2.05,
+   "new_block_bar": 1.425,
+   "old_verdict": "NULL",
+   "new_verdict": "NULL",
+   "deflated_sharpe": null,
+   "null_median": 0.43
+  }
+ ],
+ "effective_bets": {
+  "assets": {
+   "n_eff_participation": 1.95,
+   "avg_corr": 0.652,
+   "n_eff_equicorr": 1.42
+  },
+  "trend_streams": {
+   "n_eff_participation": 1.54,
+   "avg_corr": 0.764,
+   "n_eff_equicorr": 1.25
+  }
+ },
+ "hierarchical": {
+  "per_asset_tsmom30_sharpe": [
+   0.773,
+   0.503,
+   1.478,
+   0.817,
+   0.292,
+   0.679,
+   -0.409
+  ],
+  "common_mu": 0.589,
+  "common_sd": 0.217,
+  "ci95": [
+   0.164,
+   1.014
+  ],
+  "tau": 0.244,
+  "prob_positive": 0.9967
+ },
+ "track4": {
+  "sharpe": 0.456,
+  "block_bar": {
+   "bar": 1.112,
+   "null_median": 0.0,
+   "null_p50": 0.0,
+   "null_max": 2.538,
+   "reps": 10000,
+   "mean_block_bars": 120,
+   "pctile": 0.95
+  },
+  "deflated_sharpe": 0.097,
+  "trades": 17,
+  "verdict": "NULL"
+ },
+ "engine": {
+  "n_trades": 8,
+  "mean_r": 0.357,
+  "total_r": 2.86,
+  "boot_ci95_mean_r": [
+   -1.14,
+   1.82
+  ],
+  "verdict": "PENDING (n=8 underpowered; forward test is the arbiter)"
+ }
+}

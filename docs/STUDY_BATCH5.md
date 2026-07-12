@@ -88,7 +88,7 @@ realized vol > its rolling median. 1 cell.
 
 | Study | Verdict | Doc |
 |---|---|---|
-| S-F | PENDING | docs/STUDY_BATCH5_SF.md |
+| S-F | DONE — all tournament/Track4 NULLs survive block-boot unchanged; pooled common trend effect POSITIVE (Sharpe 0.59, P>0 99.7%); engine PENDING (n=8) | docs/STUDY_BATCH5_SF.md |
 | S-A | PENDING | this doc / SF |
 | S-D | PENDING | |
 | S-B | PENDING | |
