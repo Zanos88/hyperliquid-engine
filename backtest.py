@@ -63,6 +63,7 @@ from strategy.fisher_cycle import (
     macro_broken,
     opening_direction,
 )
+from strategy.bias_4h import Bias, compute_bias
 from strategy.atr import wilder_atr
 from strategy.timeframes import LOOKBACK_BARS, interval_seconds, validate_combo
 from strategy.trigger_1h import fisher_transform
@@ -102,11 +103,75 @@ class TradeResult:
     stop: float
     target: float
     reward_risk: float
-    exit_reason: str  # target | stop | unresolved
+    exit_reason: str  # target | stop | unresolved | reversion | bias_flip
     gross_r: float | None
     net_r: float | None
     bars_held: int
     indicators_snapshot: dict
+    # patient-hold variant only (no-stop accumulation): deepest adverse
+    # excursion while held, as a fraction of entry and in R (vs the never-
+    # placed structural stop). None for stop/target trades.
+    mae_frac: float | None = None
+    mae_r: float | None = None
+
+
+def _simulate_patient_hold(candles: list[Candle], entry_index: int, signal: Signal,
+                           is_long: bool, risk: float, entry_ts: datetime,
+                           bias4h_series: list[tuple[int, Bias]] | None) -> TradeResult:
+    """No-stop patient-hold exit (BACKTEST-ONLY, spot-capital accumulation —
+    NOT comp/Propr). The structural stop is NEVER placed: it only fixed R:R
+    eligibility and sizing at entry, so `risk = |entry - stop|` is used here
+    purely to express P&L and MAE in R against that never-placed stop.
+
+    Exit at a bar CLOSE on the FIRST net-profitable close (`reversion`,
+    mirroring Track 4's first-profit rule), else when the 4H bias flips off
+    the trade's direction (`bias_flip`; NEUTRAL counts as invalidation, per
+    Track 3's `macro_broken`). Deepest adverse excursion (MAE) is tracked
+    intrabar (long: lows, short: highs) and reported with P&L-equal
+    prominence. Runs out of data -> `unresolved` (excluded from win/loss)."""
+    if bias4h_series is None:
+        raise ValueError("patient_hold_exit requires bias4h_series")
+    opened_bias = Bias.BULLISH if is_long else Bias.BEARISH
+    bias_times = [t for t, _ in bias4h_series]
+    sign = 1 if is_long else -1
+    worst_frac = 0.0  # most-negative adverse excursion, as a fraction of entry
+
+    def _mae_r() -> float | None:
+        return (worst_frac * signal.entry / risk) if risk else None
+
+    def _result(j: int, exit_price: float, reason: str) -> TradeResult:
+        gross_r = sign * (exit_price - signal.entry) / risk if risk else 0.0
+        fee_r = (signal.entry + exit_price) * TAKER_FEE / risk if risk else 0.0
+        return TradeResult(
+            entry_ts=entry_ts,
+            exit_ts=datetime.fromtimestamp(candles[j].close_time_ms / 1000, tz=timezone.utc),
+            direction=signal.direction.value, entry=signal.entry, stop=signal.stop,
+            target=signal.target, reward_risk=signal.reward_risk, exit_reason=reason,
+            gross_r=gross_r, net_r=gross_r - fee_r, bars_held=j - entry_index,
+            indicators_snapshot={}, mae_frac=worst_frac, mae_r=_mae_r(),
+        )
+
+    for j in range(entry_index + 1, len(candles)):
+        c = candles[j]
+        adverse = ((c.low - signal.entry) / signal.entry if is_long
+                   else (signal.entry - c.high) / signal.entry)
+        worst_frac = min(worst_frac, adverse)
+        # (a) first net-profitable close -> banked (reversion)
+        gross = sign * (c.close - signal.entry) / signal.entry
+        if gross - 2 * TAKER_FEE > 0:
+            return _result(j, c.close, "reversion")
+        # (b) else 4H bias flipped off the trade's direction -> force-flatten
+        idx = bisect_right(bias_times, c.close_time_ms) - 1
+        if idx >= 0 and bias4h_series[idx][1] != opened_bias:
+            return _result(j, c.close, "bias_flip")
+
+    return TradeResult(
+        entry_ts=entry_ts, exit_ts=None, direction=signal.direction.value,
+        entry=signal.entry, stop=signal.stop, target=signal.target,
+        reward_risk=signal.reward_risk, exit_reason="unresolved",
+        gross_r=None, net_r=None, bars_held=len(candles) - 1 - entry_index,
+        indicators_snapshot={}, mae_frac=worst_frac, mae_r=_mae_r(),
+    )
 
 
 def simulate_outcome(
@@ -116,6 +181,8 @@ def simulate_outcome(
     fisher4h_exit: bool = False,
     fisher4h_series: list[tuple[int, float]] | None = None,
     exhaustion_threshold: float = FISHER4H_EXHAUSTION_THRESHOLD,
+    patient_hold_exit: bool = False,
+    bias4h_series: list[tuple[int, Bias]] | None = None,
 ) -> TradeResult:
     """Walk candles AFTER entry until stop or target is TOUCHED (high/low,
     not close). Both touched in one candle -> stop first (conservative).
@@ -136,6 +203,10 @@ def simulate_outcome(
     is_long = signal.direction == SignalDirection.LONG
     risk = abs(signal.entry - signal.stop)
     entry_ts = datetime.fromtimestamp(candles[entry_index].close_time_ms / 1000, tz=timezone.utc)
+
+    if patient_hold_exit:
+        return _simulate_patient_hold(candles, entry_index, signal, is_long, risk,
+                                      entry_ts, bias4h_series)
 
     def _in_favor(f: float) -> bool:
         return f >= exhaustion_threshold if is_long else f <= -exhaustion_threshold
@@ -228,7 +299,9 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
                  funding_series: list[tuple[int, float]] | None = None,
                  funding_pctile_threshold: float = 85.0,
                  oi_series: list[tuple[int, float]] | None = None,
-                 oi_z_min: float | None = None) -> dict:
+                 oi_z_min: float | None = None,
+                 patient_hold_exit: bool = False,
+                 bias4h_candles: list[Candle] | None = None) -> dict:
     """Walk-forward over trigger closes; mirrors main.py exactly:
     300-bar slices, edge-triggered alignment, one open trade at a time
     (max_concurrent=1, the live default).
@@ -292,6 +365,17 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
         sd = (sum((v - mu) ** 2 for v in window) / (len(window) - 1)) ** 0.5
         return (oi_vals[hi - 1] - mu) / sd if sd > 0 else None
 
+    # Patient-hold (no-stop accumulation) exit needs the 4H bias as a causal
+    # step function keyed by 4H close. Precompute once with the SAME trailing
+    # LOOKBACK_BARS slice + compute_bias that evaluate_signal uses for entries,
+    # so exit-time bias matches entry-time bias exactly (no lookahead).
+    bias4h_series: list[tuple[int, Bias]] = []
+    if patient_hold_exit:
+        src = bias4h_candles if bias4h_candles is not None else bias_candles
+        for k in range(len(src)):
+            sl = src[max(0, k + 1 - LOOKBACK_BARS): k + 1]
+            bias4h_series.append((src[k].close_time_ms, compute_bias(sl).bias))
+
     trades: list[TradeResult] = []
     suppressed = 0
     suppressed_exhaustion = 0
@@ -346,7 +430,9 @@ def run_backtest(bias_candles: list[Candle], trigger_candles: list[Candle],
             trade = simulate_outcome(trigger_candles, i, result,
                                      fisher4h_exit=fisher4h_exit,
                                      fisher4h_series=fisher4h_series,
-                                     exhaustion_threshold=exhaustion_threshold)
+                                     exhaustion_threshold=exhaustion_threshold,
+                                     patient_hold_exit=patient_hold_exit,
+                                     bias4h_series=bias4h_series)
             trade.indicators_snapshot = readings
             trades.append(trade)
             # block new entries until this trade resolves (or forever if unresolved)

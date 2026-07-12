@@ -16,6 +16,7 @@ from backtest import (
     simulate_outcome,
 )
 from data.feed import Candle
+from strategy.bias_4h import Bias
 from strategy.signals import Signal, SignalDirection
 
 NOW = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
@@ -250,6 +251,84 @@ def test_entry_filter_suppresses_same_direction_extension(monkeypatch):
 
     with pytest.raises(ValueError):                            # filter without a value is a bug
         evaluate_signal(trigger, trigger, config=BIAS_ONLY, fisher4h_entry_filter=True)
+
+
+# ── no-stop patient-hold exit (spot-capital accumulation variant) ──
+
+def _bull_series(*hours):
+    """(close_ms, Bias) step function, BULLISH at each listed hour."""
+    return [(h * H, Bias.BULLISH) for h in hours]
+
+
+def test_patient_hold_reversion_holds_through_stop_no_stopout():
+    # Long @100 (stop 95, never placed). Bar 1 wicks to 90 — BELOW the stop —
+    # but closes underwater; bar 2 closes green -> first-profit reversion exit.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 96, 97, 90, 96),           # low 90 < stop 95, still not profitable
+               candle(2, 96, 102, 99, 101)]         # first net-profitable close
+    bias = [(0, Bias.BULLISH), (H, Bias.BULLISH), (2 * H, Bias.BULLISH), (3 * H, Bias.BULLISH)]
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=110.0),
+                         patient_hold_exit=True, bias4h_series=bias)
+    assert t.exit_reason == "reversion"              # NOT "stop" — the wick to 90 is held through
+    assert t.bars_held == 2
+    assert t.mae_frac == pytest.approx(-0.10)        # deepest dip: (90-100)/100
+    assert t.mae_r == pytest.approx(-2.0)            # -0.10 * 100 / risk(5)
+    assert t.net_r > 0
+
+
+def test_patient_hold_bias_flip_exit_while_underwater():
+    # Long @100 stays underwater; 4H bias flips BEARISH at bar 2 -> force-flatten.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 98, 99, 97, 98),
+               candle(2, 98, 99, 96, 97)]
+    bias = [(0, Bias.BULLISH), (H, Bias.BULLISH), (2 * H, Bias.BULLISH), (3 * H, Bias.BEARISH)]
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=110.0),
+                         patient_hold_exit=True, bias4h_series=bias)
+    assert t.exit_reason == "bias_flip"
+    assert t.bars_held == 2
+    assert t.net_r < 0                               # flattened at a loss (no stop, no profit)
+    assert t.mae_frac < 0
+
+
+def test_patient_hold_neutral_bias_counts_as_invalidation():
+    # NEUTRAL is not the opened (BULLISH) direction -> invalidation, per macro_broken.
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 99, 100, 98, 99)]
+    bias = [(0, Bias.BULLISH), (H, Bias.BULLISH), (2 * H, Bias.NEUTRAL)]
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=110.0),
+                         patient_hold_exit=True, bias4h_series=bias)
+    assert t.exit_reason == "bias_flip"
+
+
+def test_patient_hold_short_mirrored_holds_through_stop():
+    # Short @100 (stop 105, never placed). Bar 1 wicks to 112 — ABOVE the stop —
+    # held; bar 2 closes green for the short -> reversion.
+    short = Signal(direction=SignalDirection.SHORT, entry=100.0, stop=105.0, target=90.0,
+                   reward_risk=2.0, timestamp=NOW, bias_reason="t", trigger_reason="t")
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 104, 112, 103, 104),        # high 112 > stop 105, underwater for short
+               candle(2, 104, 105, 97, 98)]          # short in profit at close
+    bias = [(0, Bias.BEARISH), (H, Bias.BEARISH), (2 * H, Bias.BEARISH), (3 * H, Bias.BEARISH)]
+    t = simulate_outcome(candles, 0, short, patient_hold_exit=True, bias4h_series=bias)
+    assert t.exit_reason == "reversion"
+    assert t.mae_frac == pytest.approx(-0.12)        # (100-112)/100
+    assert t.mae_r == pytest.approx(-2.4)            # -0.12 * 100 / risk(5)
+
+
+def test_patient_hold_unresolved_when_data_ends():
+    candles = [candle(0, 100, 101, 99, 100),
+               candle(1, 98, 99, 97, 98)]            # underwater, bias holds -> never exits
+    t = simulate_outcome(candles, 0, long_signal(entry=100.0, stop=95.0, target=110.0),
+                         patient_hold_exit=True, bias4h_series=_bull_series(0, 1, 2, 3))
+    assert t.exit_reason == "unresolved"
+    assert t.gross_r is None and t.net_r is None
+    assert t.mae_frac < 0                            # MAE still reported for an open hostage
+
+
+def test_patient_hold_requires_bias_series():
+    with pytest.raises(ValueError):
+        simulate_outcome([candle(0, 100, 101, 99, 100), candle(1, 100, 103, 98, 101)],
+                         0, long_signal(), patient_hold_exit=True)
 
 
 # ── return statistics (real data replaces the rejected external table) ──
