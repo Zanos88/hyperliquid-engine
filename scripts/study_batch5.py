@@ -332,14 +332,63 @@ def phase_sa():
     print("written: research/output/batch5_sa.json")
 
 
+def _boot_ci_mean(xs, mean_block_obs=8, reps=2000, seed=20260712):
+    """Stationary block-bootstrap 95% CI on the mean of a time-ordered
+    (autocorrelated/overlapping) observation sequence."""
+    if len(xs) < 3:
+        return (None, None)
+    rng = random.Random(seed)
+    n = len(xs)
+    means = sorted(sum(xs[k] for k in bs.stationary_bootstrap_indices(n, mean_block_obs, rng)) / n
+                   for _ in range(reps))
+    return (round(means[int(0.025 * reps)] * 100, 3), round(means[int(0.975 * reps)] * 100, 3))
+
+
+def phase_sd():
+    from track4_mean_reversion import bias_direction_series  # noqa (kept parallel imports)
+    from strategy.trigger_1h import fisher_transform
+    c4, _ = load_snapshot("4h")
+    fisher = fisher_transform(c4)[0]
+    closes = [c.close for c in c4]
+    n = len(c4)
+    print("=== S-D: reversion asymmetry diagnostic (no trading rule) ===")
+    rows = []
+    for X in (1.0, 1.25, 1.5):
+        for H in (6, 24, 72):
+            long_fwd, short_fwd = [], []
+            for i in range(60, n - H):
+                fwd = closes[i + H] / closes[i] - 1
+                if fisher[i] <= -X:
+                    long_fwd.append(fwd)          # oversold -> expect reversion UP
+                elif fisher[i] >= X:
+                    short_fwd.append(fwd)         # overbought -> expect reversion DOWN
+            lm = sum(long_fwd) / len(long_fwd) if long_fwd else 0.0
+            sm = sum(short_fwd) / len(short_fwd) if short_fwd else 0.0
+            lci = _boot_ci_mean(long_fwd)
+            sci = _boot_ci_mean(short_fwd)
+            # reversion strength: long side = +mean (up move); short side = -mean (down move)
+            rev_long, rev_short = lm, -sm
+            rows.append({"fisher_thr": X, "horizon_bars": H,
+                         "long_n": len(long_fwd), "long_mean_pct": round(lm * 100, 3),
+                         "long_ci95": lci, "short_n": len(short_fwd),
+                         "short_mean_pct": round(sm * 100, 3), "short_ci95": sci,
+                         "reversion_long_pct": round(rev_long * 100, 3),
+                         "reversion_short_pct": round(rev_short * 100, 3),
+                         "asymmetry_pct": round((rev_long - rev_short) * 100, 3)})
+            print(f"  |F|>={X} H={H:2d}b: LONG n={len(long_fwd):4d} mean {lm*100:+.3f}% CI{lci} | "
+                  f"SHORT n={len(short_fwd):4d} mean {sm*100:+.3f}% CI{sci} | "
+                  f"rev_long {rev_long*100:+.3f}% rev_short {rev_short*100:+.3f}% "
+                  f"asym {(rev_long-rev_short)*100:+.3f}%")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_sd.json").write_text(json.dumps({"rows": rows}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_sd.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", required=True, choices=("sf", "sa"))
+    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd"))
     args = ap.parse_args()
-    if args.phase == "sf":
-        phase_sf()
-    elif args.phase == "sa":
-        phase_sa()
+    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd}[args.phase]()
 
 
 if __name__ == "__main__":

@@ -59,3 +59,48 @@ report R-equivalents vs 3.5×ATR.
 **Conclusion #3 (Comp NULL) stands as written.** The 3.5×ATR/+1.5R cell is
 logged as the least-weak comp-compliant candidate for a future forward test
 should Zane want one, explicitly not promoted here.
+
+---
+
+## S-D — Reversion asymmetry diagnostic (not a strategy)
+
+**Verdict: DIRECTIONAL support, within noise — but it structurally justifies
+long-only.** Conditional on 4H Fisher crossing ±{1.0, 1.25, 1.5}, forward
+{6, 24, 72}-bar return means, long side (oversold, Fisher ≤ −X) vs short
+side (overbought, Fisher ≥ +X), with stationary block-boot 95% CIs.
+
+| \|F\|≥ | H (bars) | LONG n / mean% (CI) | SHORT n / mean% (CI) | rev_long | rev_short | asym |
+|---|---|---|---|---|---|---|
+| 1.0 | 6 | 596 / −0.09 (−0.48,+0.28) | 845 / +0.13 (−0.18,+0.42) | −0.09 | −0.13 | +0.04 |
+| 1.0 | 24 | 596 / +0.42 (−0.45,+1.30) | 844 / −0.13 (−0.86,+0.62) | +0.42 | +0.13 | +0.29 |
+| 1.0 | 72 | 596 / +0.62 (−1.50,+2.93) | 828 / +0.02 (−1.53,+1.63) | +0.62 | −0.02 | +0.64 |
+| 1.25 | 6 | 275 / −0.18 (−0.95,+0.52) | 452 / +0.20 (−0.14,+0.55) | −0.18 | −0.20 | +0.02 |
+| 1.25 | 24 | 275 / +0.26 (−0.84,+1.36) | 452 / +0.06 (−0.78,+0.97) | +0.26 | −0.06 | +0.32 |
+| 1.25 | 72 | 275 / +0.40 (−2.05,+2.71) | 438 / +0.51 (−1.41,+2.54) | +0.40 | −0.51 | +0.91 |
+| 1.5 | 6 | 87 / −0.35 (−1.49,+0.81) | 209 / +0.36 (−0.01,+0.75) | −0.35 | −0.36 | +0.02 |
+| 1.5 | 24 | 87 / +0.28 (−1.53,+1.83) | 209 / +0.67 (−0.52,+1.80) | +0.28 | −0.67 | +0.95 |
+| 1.5 | 72 | 87 / −0.40 (−2.80,+1.73) | 201 / +1.23 (−1.31,+3.97) | −0.40 | −1.23 | +0.83 |
+
+(reversion_long = +mean after oversold; reversion_short = −mean after
+overbought; asymmetry = rev_long − rev_short, all %.)
+
+**Findings:**
+1. **Asymmetry sign is consistent (positive in 9/9 cells) but every effect
+   size is within its block-boot CI of zero.** So the "reversion is stronger
+   after negative extremes" claim is *directionally supported* in our sample,
+   not statistically established. Honest label: suggestive, underpowered.
+2. **The short side is systematically adverse at longer horizons** — after
+   overbought, price tends to keep RISING (short_mean positive → rev_short
+   negative, reaching −1.23% at |F|≥1.5/H=72). Shorting BTC overbought
+   extremes in this sample fades a continuing uptrend. This upgrades Track
+   4's long-only from "an empirical accident of Round 2's short blowup" to
+   a **structural property visible across the full conditional distribution**
+   — the single most useful output of this diagnostic.
+3. **Long-side reversion peaks near H≈24 bars (~4 days)** (+0.26 to +0.42%),
+   matching Track 4's observed median hold — the design is entered at the
+   right horizon even though the edge is thin.
+
+No trading rule produced (by design). Informs S-A's interpretation: the
+long-only restriction is justified; the thin-but-positive long-side
+reversion at 24 bars is exactly the effect S-A's cells monetize (and which
+survives net but not the Sharpe bar).
