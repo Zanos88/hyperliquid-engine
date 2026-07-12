@@ -157,3 +157,55 @@ objection genuinely tested (a stronger null than the original 0/24).
 **Registered kill criterion (positive net + block-boot bar):** literally met
 by one cell; but with S-F's DSR in the standard report, that cell fails, and
 its mechanism is beta. Substantive verdict: **NULL.**
+
+---
+
+## S-C — Medium-horizon reversal (8–10 week gap)
+
+**Verdict: NULL — decisively, and the breadth "real test" actively falsifies
+the lead.** No single-asset cell clears its block-boot bar, and the breadth
+cell — the prediction's designated real test — loses catastrophically to
+equal-weight buy-and-hold. Grok's medium-horizon-reversal lead does NOT
+replicate in our sample: at the ~8-week horizon, crypto exhibits momentum /
+continuation, not reversal. Buying the biggest losers is a falling-knife trap.
+
+**Single-asset (BTC 1D), 8 cells** — trailing {56,70}-day return in bottom
+{10,20}th pct (rolling 2yr) → long, hold {14,21}d, no stop, sized so worst
+historical MAE × size ≤ 1% equity:
+
+| L | pct | H | n | W | notional % | worst MAE | sized % cap | Sharpe | bar | DSR |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 56 | 10 | 14 | 13 | 6 | +0.83 | −20.8 | +0.04 | −0.05 | 1.15 | 0.06 |
+| 56 | 10 | 21 | 10 | 6 | +4.27 | −20.8 | +0.21 | +0.06 | 1.17 | 0.09 |
+| 56 | 20 | 14 | 23 | 12 | **+20.81** | −23.8 | +0.87 | 0.36 | 1.22 | 0.23 |
+| 56 | 20 | 21 | 17 | 8 | +5.93 | −24.7 | +0.24 | +0.03 | 1.23 | 0.08 |
+| 70 | 10 | 14 | 17 | 8 | −5.30 | −18.0 | −0.30 | −0.14 | 1.16 | 0.04 |
+| 70 | 10 | 21 | 11 | 5 | +1.35 | −18.0 | +0.08 | +0.04 | 1.15 | 0.08 |
+| 70 | 20 | 14 | 23 | 11 | +10.01 | −23.8 | +0.42 | −0.07 | 1.20 | 0.06 |
+| 70 | 20 | 21 | 15 | 9 | −1.28 | −35.9 | −0.04 | −0.01 | 1.20 | 0.07 |
+
+All NULL: no cell's Sharpe approaches its bar; DSR ≤ 0.23 everywhere; half
+the cells are net-negative; worst MAEs −18% to −36% (the no-stop medium
+holds carry large drawdowns). Sized to the 1%-MAE rule, capital returns are
+±0.9% over the whole sample — negligible even where notional looks positive.
+Registered prediction ("single-asset likely underpowered") confirmed.
+
+**Breadth cell (7-asset, weekly, long bottom-2 by 8-week return, inverse-vol):**
+
+| | Reversal breadth | EW buy-and-hold |
+|---|---|---|
+| Sharpe | **−0.40** | −0.09 |
+| maxDD (log) | **2.55** | 1.82 |
+| Total (log) | **−1.65 (≈ −81%)** | −0.34 (≈ −29%) |
+
+The breadth cell **fails the kill criterion on both axes** (worse Sharpe AND
+worse maxDD than EW) and is a disaster in absolute terms — −81% vs −29%.
+Systematically buying the worst 8-week performers across a correlated crypto
+panel catches falling knives: the assets that fell most over 8 weeks keep
+falling, so the reversal bet is the wrong sign. This is the cleanest possible
+falsification of the medium-horizon-reversal lead in our data — and it is
+consistent with the program's other finding that the surviving directional
+signal here is TREND (momentum), not reversal, at horizons beyond a few days.
+
+**S-C conclusion: the 8–10 week reversal gap is not an opportunity in this
+sample — it is momentum territory.** No forward-test candidate.

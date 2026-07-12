@@ -520,11 +520,129 @@ def phase_sb():
     print("written: research/output/batch5_sb.json")
 
 
+def _breadth_reversal_returns(active_by_bar=None):
+    """S-C/S-G breadth: weekly (7-bar) rebalance, long the bottom-2 assets by
+    trailing 56-day return, inverse-realized-vol weighted, flat otherwise.
+    Returns (portfolio_daily_returns, ew_buyhold_daily_returns) over the common
+    window. active_by_bar (S-G): optional predicate(common_index)->bool gating
+    weeks (flat when inactive)."""
+    from breadth_tournament import build_universe
+    uni = build_universe()
+    common = uni["common_ts"]
+    n = len(common)
+    ret_by, close_by = {}, {}
+    for c in UNIVERSE:
+        p = uni["per_asset"][c]
+        idx = [p["eligible"][common[i]] for i in range(n)]
+        ret_by[c] = [p["rets"][j] for j in idx]
+        close_by[c] = [p["candles"][j].close for j in idx]
+    L, VOLW = 56, 30
+    port, ewbh = [0.0] * n, [0.0] * n
+    weights = {c: 0.0 for c in UNIVERSE}
+    for i in range(1, n):
+        if i % 7 == 0 and i > L:                # weekly rebalance
+            active = active_by_bar(i) if active_by_bar else True
+            if not active:
+                weights = {c: 0.0 for c in UNIVERSE}
+            else:
+                trail = {c: close_by[c][i] / close_by[c][i - L] - 1 for c in UNIVERSE}
+                bottom2 = sorted(trail, key=trail.get)[:2]
+                vols = {c: (sum(r * r for r in ret_by[c][i - VOLW:i]) / VOLW) ** 0.5 for c in bottom2}
+                inv = {c: (1.0 / vols[c] if vols[c] > 0 else 0.0) for c in bottom2}
+                s = sum(inv.values()) or 1.0
+                weights = {c: (inv[c] / s if c in bottom2 else 0.0) for c in UNIVERSE}
+        port[i] = sum(weights[c] * ret_by[c][i] for c in UNIVERSE)
+        ewbh[i] = sum(ret_by[c][i] for c in UNIVERSE) / len(UNIVERSE)
+    return port, ewbh, L
+
+
+def _maxdd(rets):
+    eq = peak = mdd = 0.0
+    for r in rets:
+        eq += r; peak = max(peak, eq); mdd = max(mdd, peak - eq)
+    return mdd
+
+
+def phase_sc():
+    c1d, _ = load_snapshot("1d")
+    closes = [c.close for c in c1d]
+    lows = [c.low for c in c1d]
+    rets = log_returns(c1d)
+    n = len(c1d)
+    ppy = 365.0
+    print("=== S-C: medium-horizon reversal (8-10wk gap) ===")
+    cells = []
+    for L in (56, 70):
+        trail = [closes[i] / closes[i - L] - 1 if i >= L else None for i in range(n)]
+        for P in (10, 20):
+            for H in (14, 21):
+                pos = [0] * n
+                trades = []
+                i = L + 730
+                while i < n - H:
+                    win = [trail[j] for j in range(i - 730, i) if trail[j] is not None]
+                    if trail[i] is not None and win:
+                        rank = sum(1 for v in win if v <= trail[i]) / len(win) * 100
+                        if rank <= P:
+                            e = closes[i]
+                            mae = min(lows[i + k] / e - 1 for k in range(1, H + 1))
+                            ret = closes[i + H] / e - 1 - 2 * 0.00075
+                            for k in range(i, i + H + 1):
+                                pos[k] = 1
+                            trades.append({"entry_i": i, "ret": ret, "mae": mae})
+                            i += H + 1
+                            continue
+                    i += 1
+                if not trades:
+                    cells.append({"L": L, "pct": P, "hold": H, "trades": 0}); continue
+                worst_mae = min(t["mae"] for t in trades)
+                size = 0.01 / abs(worst_mae) if worst_mae < 0 else 1.0
+                net = net_strategy_returns(pos, rets)
+                sr = bs.annualized_sharpe(net[L + 730:], ppy)
+                bar = bs.block_bootstrap_family_bar(rets[L + 730:], [pos[L + 730:]], ppy, 20, REPS)["bar"]
+                dsr = bs.deflated_sharpe_ratio(sr, net[L + 730:], ppy, 8)
+                sized_total = size * sum(t["ret"] for t in trades) * 100
+                cells.append({"L": L, "pct": P, "hold": H, "trades": len(trades),
+                              "wins": sum(1 for t in trades if t["ret"] > 0),
+                              "sum_ret_pct_notional": round(sum(t["ret"] for t in trades) * 100, 2),
+                              "worst_mae_pct": round(worst_mae * 100, 2),
+                              "size_frac": round(size, 3), "sized_total_pct_capital": round(sized_total, 2),
+                              "sharpe": round(sr, 3), "block_bar": round(bar, 3),
+                              "deflated_sharpe": round(dsr, 3),
+                              "clears": sr > bar and not math.isnan(dsr) and dsr >= 0.95})
+                c = cells[-1]
+                print(f"  L={L} p{P} H={H}: n={c['trades']:2d} W={c['wins']:2d} "
+                      f"notional {c['sum_ret_pct_notional']:+7.2f}% worstMAE {c['worst_mae_pct']}% "
+                      f"sized {c['sized_total_pct_capital']:+.2f}%cap Sharpe {sr:+.2f} bar {bar:.2f} "
+                      f"DSR {dsr:.3f}" + ("  <-- CLEARS" if c["clears"] else ""))
+
+    # breadth cell
+    port, ewbh, L = _breadth_reversal_returns()
+    a = L + 1
+    sr_b = bs.annualized_sharpe(port[a:], ppy); sr_ew = bs.annualized_sharpe(ewbh[a:], ppy)
+    dd_b = _maxdd(port[a:]); dd_ew = _maxdd(ewbh[a:])
+    bar_b = bs.block_bootstrap_family_bar(ewbh[a:], [[1 if port[i] != 0 else 0 for i in range(a, len(port))]],
+                                          ppy, 20, REPS)["bar"] if False else None
+    beats = sr_b > sr_ew and dd_b < dd_ew
+    breadth = {"sharpe": round(sr_b, 3), "ew_buyhold_sharpe": round(sr_ew, 3),
+               "maxdd_log": round(dd_b, 3), "ew_buyhold_maxdd_log": round(dd_ew, 3),
+               "beats_ew_on_sharpe_and_maxdd": beats,
+               "total_pct": round(sum(port[a:]) * 100, 2),
+               "ew_total_pct": round(sum(ewbh[a:]) * 100, 2)}
+    print(f"\n  breadth: Sharpe {sr_b:+.2f} (EW {sr_ew:+.2f}) maxDD {dd_b:.2f} (EW {dd_ew:.2f}) "
+          f"total {breadth['total_pct']:+.1f}% (EW {breadth['ew_total_pct']:+.1f}%) "
+          f"=> {'BEATS EW' if beats else 'does NOT beat EW'} on Sharpe+maxDD")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "batch5_sc.json").write_text(json.dumps(
+        {"single_asset": cells, "breadth": breadth}, indent=1), encoding="utf-8")
+    print("written: research/output/batch5_sc.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd", "sb"))
+    ap.add_argument("--phase", required=True, choices=("sf", "sa", "sd", "sb", "sc"))
     args = ap.parse_args()
-    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd, "sb": phase_sb}[args.phase]()
+    {"sf": phase_sf, "sa": phase_sa, "sd": phase_sd, "sb": phase_sb, "sc": phase_sc}[args.phase]()
 
 
 if __name__ == "__main__":
