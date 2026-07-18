@@ -1,0 +1,122 @@
+{
+  "buy_hold": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.6369,
+    "net_multiple": 1.8906,
+    "ann_return_pct": 18.5814,
+    "sharpe": 0.2839,
+    "max_dd_log": 1.4554,
+    "trades": 0,
+    "exposure": 1.0,
+    "type": "baseline"
+  },
+  "tsmom30": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 1.1076,
+    "net_multiple": 3.0271,
+    "ann_return_pct": 34.4996,
+    "sharpe": 0.7732,
+    "max_dd_log": 0.6332,
+    "trades": 114,
+    "exposure": 0.5249,
+    "type": "baseline"
+  },
+  "tsmom30_bull_only": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.1988,
+    "net_multiple": 1.22,
+    "ann_return_pct": 5.4644,
+    "sharpe": 0.3036,
+    "max_dd_log": 0.4563,
+    "trades": 29,
+    "exposure": 0.1246,
+    "type": "regime_gated"
+  },
+  "tsmom30_no_bear": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.9999,
+    "net_multiple": 2.7181,
+    "ann_return_pct": 30.6792,
+    "sharpe": 0.7071,
+    "max_dd_log": 0.6332,
+    "trades": 114,
+    "exposure": 0.5088,
+    "type": "regime_gated"
+  },
+  "sma50": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 1.0356,
+    "net_multiple": 2.8167,
+    "ann_return_pct": 31.932,
+    "sharpe": 0.7116,
+    "max_dd_log": 0.8775,
+    "trades": 76,
+    "exposure": 0.5125,
+    "type": "baseline"
+  },
+  "sma50_bull_only": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.2782,
+    "net_multiple": 1.3208,
+    "ann_return_pct": 7.7289,
+    "sharpe": 0.4254,
+    "max_dd_log": 0.4144,
+    "trades": 31,
+    "exposure": 0.1283,
+    "type": "regime_gated"
+  },
+  "sma50_no_bear": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.9058,
+    "net_multiple": 2.474,
+    "ann_return_pct": 27.4295,
+    "sharpe": 0.6315,
+    "max_dd_log": 0.8775,
+    "trades": 78,
+    "exposure": 0.4927,
+    "type": "regime_gated"
+  },
+  "track4_1d": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.3421,
+    "net_multiple": 1.408,
+    "ann_return_pct": 9.5878,
+    "sharpe": 0.3087,
+    "max_dd_log": 0.5709,
+    "trades": 96,
+    "exposure": 0.2133,
+    "type": "baseline"
+  },
+  "track4_bull_only": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.2584,
+    "net_multiple": 1.2949,
+    "ann_return_pct": 7.1593,
+    "sharpe": 0.3868,
+    "max_dd_log": 0.3816,
+    "trades": 28,
+    "exposure": 0.0506,
+    "type": "regime_gated"
+  },
+  "funding_mr": {
+    "bars": 1364,
+    "years": 3.74,
+    "net_log_return": 0.4048,
+    "net_multiple": 1.4991,
+    "ann_return_pct": 11.4419,
+    "sharpe": 1.0027,
+    "max_dd_log": 0.1209,
+    "trades": 8,
+    "exposure": 0.055,
+    "type": "new_angle"
+  }
+}
