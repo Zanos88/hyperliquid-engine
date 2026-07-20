@@ -1,0 +1,29 @@
+{
+  "ts": "2026-07-20T00:05:41.987272+00:00",
+  "btc_price": 64659.0,
+  "signals": {
+    "tsmom30_base": {
+      "direction": "BULL",
+      "size": 1.0
+    },
+    "tsmom30_conviction": {
+      "direction": "BULL",
+      "size": 0.566
+    },
+    "fund_mr_proxy": {
+      "direction": "BULL",
+      "size": 1.0
+    },
+    "combined": {
+      "direction": "BULL",
+      "size": 1.5
+    }
+  },
+  "metrics": {
+    "mom_30d_pct": 1.75,
+    "ret_5d_pct": -0.59,
+    "ret_20d_pct": 7.3,
+    "vol_recent_ann_pct": 17.6,
+    "vol_hist_ann_pct": 37.8
+  }
+}
