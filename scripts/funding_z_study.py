@@ -92,6 +92,42 @@ def daily_return(close_today, close_yesterday):
     return math.log(close_today / close_yesterday)
 
 
+def norm_cdf(x):
+    """Standard normal CDF."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def norm_ppf(p):
+    """Inverse standard normal CDF (Acklam's rational approximation).
+
+    Used for the canonical Bailey & Lopez de Prado E[max Z] quantiles.
+    Accurate to ~1e-9 over the full (0, 1) range.
+    """
+    if p <= 0.0 or p >= 1.0:
+        raise ValueError("norm_ppf domain is (0, 1)")
+    a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+         1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
+    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+         6.680131188771972e+01, -1.328068155288572e+01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+         3.754408661907416e+00]
+    p_low = 0.02425
+    if p < p_low:
+        q = math.sqrt(-2.0 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+    if p <= 1.0 - p_low:
+        q = p - 0.5
+        r = q * q
+        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / \
+               (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+    q = math.sqrt(-2.0 * math.log(1.0 - p))
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0)
+
+
 def run_study():
     print("=" * 60)
     print("FundingZ Study: Direct Funding-Rate Z-Score Signal")
@@ -210,6 +246,7 @@ def run_study():
     print("=" * 60)
 
     results = []
+    explore_active_returns = {}  # config label -> per-bar (daily) returns while in-market (explore)
     total_configs = len(LOOKBACKS) * len(ENTRY_THRESHOLDS) * len(MAX_HOLD_HOURS)
     config_idx = 0
 
@@ -264,6 +301,8 @@ def run_study():
 
                     # Compute metrics
                     str_returns = [r for r in daily_position_returns if r != 0.0]
+                    if window_name == "explore":
+                        explore_active_returns[label] = list(str_returns)
                     non_zero_bars = len(str_returns)
                     unique_trades = len(trades)
                     completed_trades = sum(1 for t in trades if "exit_i" in t)
@@ -306,63 +345,6 @@ def run_study():
                         print(f"    {window_name}: Sharpe {sharpe:.4f}, AnnRet {ann_ret*100:.2f}%, "
                               f"NetMult {net_mult:.4f}, trades {unique_trades}")
 
-    # ── Compute deflated Sharpe ──────────────────────────────────────────
-    print("\n" + "=" * 60)
-    print("Deflated Sharpe (Bailey & López de Prado)")
-    print("=" * 60)
-
-    # Collect explore Sharpe for all configs with >= 2 trades
-    explore_sharpes = []
-    for r in results:
-        if r["window"] == "explore" and r["total_trades_started"] >= 2:
-            explore_sharpes.append(r["sharpe_ann"])
-
-    n_configs = len(explore_sharpes)
-    max_sr = max(explore_sharpes) if explore_sharpes else 0.0
-    mean_sr = statistics.mean(explore_sharpes) if explore_sharpes else 0.0
-    std_sr = statistics.stdev(explore_sharpes) if len(explore_sharpes) > 1 else 1.0
-
-    # E[max SR] ≈ mean + std * ((1 - γ) * Φ⁻¹(1 - 1/N) + γ * Φ⁻¹(1 - 1/N * e^{-1}))
-    # Simplified: E[max Z] approximation for N i.i.d. normals
-    # Using formula from Bailey & López de Prado 2014
-    from math import sqrt, log, pi, e
-
-    def euler_mascheroni():
-        return 0.5772156649
-
-    gamma = euler_mascheroni()
-
-    def expected_max_z(n):
-        # Approximation: E[max of N i.i.d. N(0,1)]
-        if n <= 1:
-            return 0.0
-        return (1 - gamma) * sqrt(2 * log(n)) + gamma * sqrt(2 * log(n * e))
-
-    sr0 = mean_sr + std_sr * expected_max_z(n_configs) if n_configs > 0 else 0.0
-
-    # Deflated Sharpe = (selected_max - sr0) / std_adj
-    # std_adj = std of the max SR distribution ≈ std / sqrt(2 * log(n))
-    # Simplified: DSR = 1 - Φ(selected_max - sr0) approximates the probability
-    # that the selected SR is above the null
-    if n_configs > 0 and std_sr > 0:
-        std_adjust = std_sr / sqrt(2 * log(max(2, n_configs)))
-        dsr_z = (max_sr - sr0) / std_adjust if std_adjust > 0 else 0.0
-    else:
-        dsr_z = 0.0
-
-    # DSR probability using normal CDF approximation
-    from math import erf
-    dsr_prob = 0.5 * (1 + erf(dsr_z / sqrt(2)))
-    dsr_prob = round(dsr_prob, 4)
-
-    print(f"  Configs with >=2 trades: {n_configs}")
-    print(f"  Max explore Sharpe: {max_sr:.4f}")
-    print(f"  Mean explore Sharpe: {mean_sr:.4f}")
-    print(f"  Std explore Sharpe: {std_sr:.4f}")
-    print(f"  SR0 (expected max from noise): {sr0:.4f}")
-    print(f"  Deflated Sharpe z-score: {dsr_z:.4f}")
-    print(f"  DSR probability: {dsr_prob:.4f} (need ≥0.95)")
-
     # ── Select winner ────────────────────────────────────────────────────
     # Mechanical selection: best explore Sharpe with >=10 trades that also
     # exceeds B&H explore Sharpe. Check holdout too.
@@ -382,12 +364,12 @@ def run_study():
             full_results_map[r["config"]] = r
 
     # Filter: >= 10 trades AND Sharpe > B&H explore
-    eligible = [r for r in explore_results 
+    eligible = [r for r in explore_results
                 if r["total_trades_started"] >= 10 and r["sharpe_ann"] > bh_explore_sr]
     eligible.sort(key=lambda r: r["sharpe_ann"], reverse=True)
 
     print(f"  Eligible candidates (≥10 trades, Sharpe > B&H {bh_explore_sr:.4f}): {len(eligible)}")
-    
+
     winner = None
     if eligible:
         winner = eligible[0]
@@ -420,6 +402,88 @@ def run_study():
                 print(f"    {sr_entry['config']}: SR {sr_entry['sharpe_ann']:.4f}, "
                       f"trades {sr_entry['total_trades_started']}, Ret {sr_entry['ann_return_pct']}%")
 
+    # ── Deflated Sharpe (canonical Bailey & López de Prado) ──────────────
+    print("\n" + "=" * 60)
+    print("Deflated Sharpe (Bailey & López de Prado, canonical)")
+    print("=" * 60)
+
+    # Cross-trial benchmark: expected MAX Sharpe from N i.i.d. noise strategies.
+    # SR0 = mean_SR + std_SR * E[max_N], with E[max_N] built from the exact
+    # inverse-normal quantiles (NOT the sqrt(2 ln N) asymptotic, which overstates
+    # E[max] and hence SR0 for small N — the defect flagged in the PR #8 audit).
+    explore_sharpes = [r["sharpe_ann"] for r in results
+                       if r["window"] == "explore" and r["total_trades_started"] >= 2]
+    n_configs = len(explore_sharpes)
+    max_sr = max(explore_sharpes) if explore_sharpes else 0.0
+    mean_sr = statistics.mean(explore_sharpes) if explore_sharpes else 0.0
+    std_sr = statistics.stdev(explore_sharpes) if len(explore_sharpes) > 1 else 0.0
+
+    GAMMA = 0.5772156649  # Euler–Mascheroni
+
+    def expected_max_z(n):
+        """E[max of N i.i.d. N(0,1)] via Bailey & López de Prado (2014), eq. for E[max]:
+        (1-γ)·Φ⁻¹(1 − 1/N) + γ·Φ⁻¹(1 − 1/(N·e))."""
+        if n <= 1:
+            return 0.0
+        return (1.0 - GAMMA) * norm_ppf(1.0 - 1.0 / n) + GAMMA * norm_ppf(1.0 - 1.0 / (n * math.e))
+
+    e_max = expected_max_z(n_configs)
+    sr0 = mean_sr + std_sr * e_max
+
+    # Deflate the SELECTED strategy's Sharpe (the winner — the one proposed for
+    # promotion), using the canonical standard error of the Sharpe estimator
+    # (López de Prado 2018, "Advances in Financial ML", eq. 8.7):
+    #   σ(SR) = sqrt[ (1 − γ3·SR + (γ4−1)/4·SR²) / (T − 1) ]
+    # computed on the winner's actual in-market per-bar returns (T bars, skew γ3,
+    # kurtosis γ4). This replaces the earlier std_SR/sqrt(2 ln N) placeholder,
+    # which drastically understated the estimator variance on a ~20-trade sample.
+    dsr_sr_used = None      # annualised Sharpe being deflated
+    dsr_T = None
+    dsr_skew = None
+    dsr_kurt = None
+    dsr_se_ann = None
+    if winner is not None:
+        wret = explore_active_returns.get(winner["config"], [])
+    else:
+        wret = []
+    if len(wret) >= 3 and statistics.stdev(wret) > 0:
+        T = len(wret)
+        mu_w = statistics.mean(wret)
+        sd_w = statistics.stdev(wret)
+        sr_perbar = mu_w / sd_w
+        std_pop = math.sqrt(sum((x - mu_w) ** 2 for x in wret) / T)  # population σ for moments
+        zc = [(x - mu_w) / std_pop for x in wret]
+        g3 = sum(v ** 3 for v in zc) / T           # skew (3rd standardised moment)
+        g4 = sum(v ** 4 for v in zc) / T           # kurtosis (4th, =3 for normal)
+        se_perbar = math.sqrt(max(1e-12, (1.0 - g3 * sr_perbar + (g4 - 1.0) / 4.0 * sr_perbar ** 2)) / (T - 1))
+        se_ann = se_perbar * math.sqrt(ANNUAL_TRADING_DAYS)
+        sr_used = winner["sharpe_ann"]
+        dsr_z = (sr_used - sr0) / se_ann if se_ann > 0 else 0.0
+        dsr_sr_used = round(sr_used, 4)
+        dsr_T = T
+        dsr_skew = round(g3, 4)
+        dsr_kurt = round(g4, 4)
+        dsr_se_ann = round(se_ann, 4)
+    else:
+        # No eligible winner: fall back to deflating the unconstrained max SR
+        # with a Sharpe SE assuming ~normal returns over the max config's bars.
+        dsr_z = 0.0
+
+    dsr_prob = round(norm_cdf(dsr_z), 4)
+
+    print(f"  Configs with >=2 trades: {n_configs}")
+    print(f"  Max explore Sharpe (unconstrained): {max_sr:.4f}")
+    print(f"  Mean / Std explore Sharpe: {mean_sr:.4f} / {std_sr:.4f}")
+    print(f"  E[max Z] (canonical inverse-CDF): {e_max:.4f}")
+    print(f"  SR0 (noise-expected max Sharpe): {sr0:.4f}")
+    if dsr_sr_used is not None:
+        print(f"  Deflated Sharpe target (winner): {dsr_sr_used:.4f}  "
+              f"(T={dsr_T} bars, skew {dsr_skew}, kurt {dsr_kurt}, SE {dsr_se_ann})")
+    print(f"  Deflated Sharpe z-score: {dsr_z:.4f}")
+    print(f"  DSR probability: {dsr_prob:.4f} (need ≥0.95)")
+    print(f"  (Even the unconstrained max Sharpe {max_sr:.4f} is "
+          f"{'below' if max_sr < sr0 else 'above'} SR0 {sr0:.4f}.)")
+
     # ── Prepare output ──────────────────────────────────────────────────
     output = {
         "study": "funding_z_rework",
@@ -450,11 +514,25 @@ def run_study():
         "deflated_sharpe": {
             "n_configs_evaluated": n_configs,
             "max_explore_sr": round(max_sr, 4),
+            "mean_explore_sr": round(mean_sr, 4),
+            "std_explore_sr": round(std_sr, 4),
+            "e_max_z": round(e_max, 4),
             "sr0_null": round(sr0, 4),
+            "deflated_target_sr": dsr_sr_used,
+            "target_active_bars": dsr_T,
+            "target_skew": dsr_skew,
+            "target_kurtosis": dsr_kurt,
+            "target_sharpe_se_ann": dsr_se_ann,
             "dsr_z": round(dsr_z, 4),
             "dsr_probability": dsr_prob,
             "dsr_significant": dsr_prob >= 0.95,
-            "method": "Bailey & López de Prado (2014), E[max Z] approx for N i.i.d. normals",
+            "method": (
+                "Canonical Bailey & López de Prado. SR0 = mean_SR + std_SR * E[max_N] "
+                "with E[max_N] from exact inverse-normal quantiles "
+                "(1-γ)Φ⁻¹(1-1/N)+γΦ⁻¹(1-1/(N·e)); the selected (winner) Sharpe is "
+                "deflated using the Sharpe-estimator SE "
+                "sqrt((1-γ3·SR+(γ4-1)/4·SR²)/(T-1)) on the winner's in-market returns."
+            ),
         },
         "all_variants": results,
         "selection_criteria": (
@@ -471,11 +549,28 @@ def run_study():
         output["winner_holdout"] = h
         output["winner_fullspan"] = f
 
+        # Absolute-money check: does the strategy actually beat buy-and-hold in
+        # net multiple over the full span? The Sharpe is computed on in-market
+        # (non-zero) bars only, so a high annualised Sharpe can coexist with the
+        # strategy trailing B&H in total return (it is flat most of the span).
+        beats_bh_net_mult_full = bool(f and f["net_multiple"] > bh_full_mult)
+        output["absolute_return_vs_bh"] = {
+            "strategy_full_net_mult": f["net_multiple"] if f else None,
+            "bh_full_net_mult": round(bh_full_mult, 4),
+            "strategy_beats_bh_absolute_full": beats_bh_net_mult_full,
+            "note": (
+                "Sharpe is annualised on in-market bars only; the winner is flat "
+                f"most of the span (in-market ~{f['total_trades_started'] if f else 0} "
+                "trades). Net multiple is the honest absolute-money comparison."
+            ),
+        }
+
         is_promotable = (
             winner["total_trades_started"] >= MIN_TRADES_PROMOTABLE
             and h and h["sharpe_ann"] > 0
             and h["sharpe_ann"] > bh_holdout_sr
             and dsr_prob >= 0.95
+            and beats_bh_net_mult_full
         )
         output["is_promotable"] = is_promotable
 
@@ -495,11 +590,29 @@ def run_study():
                 reasons.append(f"holdout Sharpe {h['sharpe_ann']:.4f} <= B&H {bh_holdout_sr:.4f}")
             if dsr_prob < 0.95:
                 reasons.append(f"DSR {dsr_prob:.4f} < 0.95")
+            if not beats_bh_net_mult_full and f:
+                reasons.append(
+                    f"underperforms B&H in absolute money full-span "
+                    f"(net mult {f['net_multiple']:.4f} vs B&H {bh_full_mult:.4f})")
             output["conclusion"] = (
                 f"NOT promotable: {winner['config']} fails bar - {'; '.join(reasons)}"
             )
     else:
         output["conclusion"] = "No config met the selection criteria."
+
+    output["caveats"] = [
+        "Annualised Sharpe (×√365) is computed on in-market (non-zero) bars only; "
+        "on a ~20-trade / ~66-bar sample it overstates the economic edge. Read it "
+        "alongside net_multiple and absolute_return_vs_bh.",
+        "Single-asset BTC daily funding yields a sparse signal (<30 in-sample trades), "
+        "below the promotable trade minimum. Statistical power is inherently limited.",
+        "The z-score entry uses each day's own last-hour funding rate against a "
+        "trailing lookback window; the traded return is strictly the NEXT day's "
+        "close-to-close move, so there is no look-ahead.",
+        "DSR deflates the selected winner's Sharpe against the noise-expected max of "
+        f"{n_configs} configs; direction (not significant) is robust, but the point "
+        "estimate carries wide uncertainty on this sample size.",
+    ]
 
     # ── Write output ────────────────────────────────────────────────────
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

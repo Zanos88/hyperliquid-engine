@@ -47,11 +47,19 @@
   "deflated_sharpe": {
     "n_configs_evaluated": 27,
     "max_explore_sr": 3.2762,
-    "sr0_null": 5.2067,
-    "dsr_z": -2.998,
-    "dsr_probability": 0.0014,
+    "mean_explore_sr": 0.6151,
+    "std_explore_sr": 1.6532,
+    "e_max_z": 2.0296,
+    "sr0_null": 3.9705,
+    "deflated_target_sr": 2.9554,
+    "target_active_bars": 66,
+    "target_skew": 0.7701,
+    "target_kurtosis": 6.1746,
+    "target_sharpe_se_ann": 2.2628,
+    "dsr_z": -0.4486,
+    "dsr_probability": 0.3269,
     "dsr_significant": false,
-    "method": "Bailey & L\u00f3pez de Prado (2014), E[max Z] approx for N i.i.d. normals"
+    "method": "Canonical Bailey & L\u00f3pez de Prado. SR0 = mean_SR + std_SR * E[max_N] with E[max_N] from exact inverse-normal quantiles (1-\u03b3)\u03a6\u207b\u00b9(1-1/N)+\u03b3\u03a6\u207b\u00b9(1-1/(N\u00b7e)); the selected (winner) Sharpe is deflated using the Sharpe-estimator SE sqrt((1-\u03b33\u00b7SR+(\u03b34-1)/4\u00b7SR\u00b2)/(T-1)) on the winner's in-market returns."
   },
   "all_variants": [
     {
@@ -1122,7 +1130,7 @@
     "total_trades_started": 20,
     "completed_trades": 20
   },
-  "conclusion": "NOT promotable: LB48_T1.5_MH24 fails bar - only 20 trades (need 30); holdout Sharpe -0.3044 <= 0; DSR 0.0014 < 0.95",
+  "conclusion": "NOT promotable: LB48_T1.5_MH24 fails bar - only 20 trades (need 30); holdout Sharpe -0.3044 <= 0; DSR 0.3269 < 0.95; underperforms B&H in absolute money full-span (net mult 1.2566 vs B&H 2.3261)",
   "winner_holdout": {
     "config": "LB48_T1.5_MH24",
     "lookback_days": 48,
@@ -1149,5 +1157,17 @@
     "total_trades_started": 42,
     "completed_trades": 42
   },
-  "is_promotable": false
+  "absolute_return_vs_bh": {
+    "strategy_full_net_mult": 1.2566,
+    "bh_full_net_mult": 2.3261,
+    "strategy_beats_bh_absolute_full": false,
+    "note": "Sharpe is annualised on in-market bars only; the winner is flat most of the span (in-market ~42 trades). Net multiple is the honest absolute-money comparison."
+  },
+  "is_promotable": false,
+  "caveats": [
+    "Annualised Sharpe (\u00d7\u221a365) is computed on in-market (non-zero) bars only; on a ~20-trade / ~66-bar sample it overstates the economic edge. Read it alongside net_multiple and absolute_return_vs_bh.",
+    "Single-asset BTC daily funding yields a sparse signal (<30 in-sample trades), below the promotable trade minimum. Statistical power is inherently limited.",
+    "The z-score entry uses each day's own last-hour funding rate against a trailing lookback window; the traded return is strictly the NEXT day's close-to-close move, so there is no look-ahead.",
+    "DSR deflates the selected winner's Sharpe against the noise-expected max of 27 configs; direction (not significant) is robust, but the point estimate carries wide uncertainty on this sample size."
+  ]
 }
