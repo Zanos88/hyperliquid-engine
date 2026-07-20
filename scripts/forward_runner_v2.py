@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Forward Runner v2 — TSMOM14 for Propr Comp
-Deployed as cron every 6h. Generates trade-ready signals with comp-compliant sizing.
+Forward Runner v2 — TSMOM14 Signal Writer
+Generates trade-ready signals with comp-informed sizing.
+NOTE: This is a paper signal-writer (Writes JSON, no exchange API).
+Kelly fraction uses full-sample Sharpe 0.93 as forward estimate (best available,
+but circular — see tsmom_variant_study for honest OOS assessment).
 
-Comp conditions: ~5% daily loss limit, ~10% max total drawdown
-Target: 10% account win in 5-6 trading days
-
-Strategy: TSMOM14 (14-day momentum) at up to 2x leverage
-Risk scaling: Kelly-optimal fraction with daily-loss ceiling
+Strategy: TSMOM14 (14-day momentum), sizing capped by daily-loss constraint.
+Actual leverage is computed from vol and daily loss limit, not the 2.0x target.
 """
 
 import json, os, sys, math
@@ -26,7 +26,7 @@ TAKER_FEE = 0.00075            # 0.075% per side
 
 # Data paths
 DATA_HL = Path("research/data/BTC_1d_snapshot.json")
-DATA_BINANCE = Path("/opt/data/candles-binance/BTC_1d_snapshot.json")
+DATA_BINANCE = Path("research/data/BTC_1d_snapshot.json")  # fallback, same file
 STATE_FILE = Path("research/output/forward_runner_v2_state.json")
 OUTPUT_FILE = Path("research/output/forward_runner_v2_output.json")
 
@@ -138,6 +138,8 @@ def main():
 
     # ── Sizing ──
     sizing = comp_sizing(vol, signal, close, close, daily_pnl)
+    # Compute the actual leverage that was applied (not the 2.0x target)
+    actual_leverage = sizing.get("leverage", 0)
     state["last_sizing"] = sizing
 
     # ── Output ──
@@ -147,7 +149,8 @@ def main():
         "volatility_pct": round(vol * 100, 2),
         "signal": "BULL" if signal > 0 else "BEAR" if signal < 0 else "FLAT",
         "lookback": LOOKBACK,
-        "leverage": LEVERAGE_TARGET,
+        "leverage_target": LEVERAGE_TARGET,
+        "leverage_actual": actual_leverage,
         "comp_target_pct": COMP_TARGET * 100,
         "daily_loss_limit_pct": DAILY_LOSS_LIMIT * 100,
         "position": {
@@ -187,7 +190,9 @@ def main():
     # ── Deliver signal ──
     print(f"\n── DELIVERY ──")
     status = "🟢" if signal > 0 else "🔴" if signal < 0 else "⚪"
-    print(f"{status} BTC ${close:,.0f} | TSMOM14 {output['signal']} {sizing['size']:.0%} pos @ 2.0x | Daily stop ${sizing['stop_price']:,.0f} | Comp target: {COMP_TARGET*100:.0f}%")
+    print(f"{status} BTC ${close:,.0f} | TSMOM14 {output['signal']} "
+          f"{sizing['size']:.2f}x ({sizing['leverage']:.2f}x lev cap) | "
+          f"Kelly={kelly_fraction:.2f} | Daily stop ${sizing['stop_price']:,.0f}")
 
 if __name__ == "__main__":
     main()
