@@ -1,13 +1,23 @@
-# btc-signal-bot — Stage 1 (Signal-Only)
+# btc-signal-bot — Stage 2 (Signal + dry-run-gated execution)
 
-BTC-PERP multi-timeframe confluence signal bot for a future Propr.xyz
-1-Step Classic challenge account. **This is Stage 1: it posts Telegram
-alerts only — there is no code path capable of placing an order**
-(`execution/propr_stub.py` raises `NotImplementedError` unconditionally,
-by design, permanently for Stage 1).
+BTC-PERP multi-timeframe confluence signal bot for a Propr.xyz 1-Step
+Classic challenge account. It posts Telegram alerts and (Stage 2) can
+drive a Propr execution layer — but **order dispatch is OFF by default,
+behind a two-switch safety gate**: a real order is sent only when BOTH
+`DRY_RUN=false` (env) AND `feature_flags.execution_enabled: true`
+(`config.yaml`) are set. With either switch in its default position the
+engine is in dry-run — order intents are recorded and logged, never sent
+(`execution/propr_client.py`, wrapping the vendored SDK in
+`execution/vendor/propr_sdk.py`).
 
-Implemented 2026-07-07 against the scaffold's 18-test acceptance contract
-(all passing) and deployed live to Railway — see "Live deployment" below.
+> **Note:** there is no `execution/propr_stub.py`. That original Stage 1
+> stub (which raised `NotImplementedError`) has been replaced by the
+> dry-run-gated `execution/propr_client.py`; the safety guarantee is now
+> the two-switch gate, not the absence of an order path. Older docs that
+> still reference `propr_stub.py` predate this change.
+
+Deployed live to Railway as a worker — see "Live deployment" below. The
+pytest suite is the acceptance contract (see [Tests](#tests)).
 
 Built from [`btc-signal-bot-build-spec.md`](btc-signal-bot-build-spec.md).
 See [`docs/RESEARCH_FINDINGS.md`](docs/RESEARCH_FINDINGS.md) for every
@@ -32,7 +42,8 @@ config, or Supabase tables.
 - **4H bias** (`strategy/bias_4h.py`): fractal swing detection →
   Fibonacci retracement/extension + horizontal S/R → BULLISH / BEARISH /
   NEUTRAL.
-- **1H trigger** (`strategy/trigger_1h.py`): Fisher Transform (period 9)
+- **1H trigger** (`strategy/trigger_1h.py`): Fisher Transform (period 10,
+  Ehlers' primary-source default — supersedes the platform-convention 9)
   cross + OBV-vs-its-own-20-SMA confirmation, evaluated only on closed 1H
   candles.
 - **Confluence gate** (`strategy/signals.py`): a signal only exists when
@@ -55,11 +66,12 @@ config, or Supabase tables.
 config.yaml            # account params, risk %, telegram, feature flags
 strategy/               # bias_4h.py, trigger_1h.py, signals.py — zero imports from alerts/ or execution/
 data/feed.py            # Hyperliquid public OHLCV fetch
-risk/                   # sizing.py, circuit_breaker.py
+risk/                   # sizing.py, circuit_breaker.py, gate.py, challenge.py
 alerts/                 # telegram.py, formats.py
-execution/propr_stub.py # interface stub, raises NotImplementedError everywhere
+execution/              # propr_client.py (dry-run-gated Propr client) + vendor/propr_sdk.py
+db/                     # store.py (Postgres telemetry + live settings), schema.sql
 ledger/tracker.py       # hypothetical positions + daily P&L
-main.py                 # scheduler loop (candle-close driven)
+main.py                 # Stage 2 scheduler loop (candle-close driven)
 tests/                  # pytest unit tests against synthetic data
 ```
 
@@ -98,9 +110,11 @@ python main.py
 ```
 
 The bot polls every 60 seconds but only evaluates strategy logic when a
-new 1H (or 4H) candle has closed — see `_last_closed_candle_time` in
-`main.py`. Logs go to stdout (`logging.basicConfig`); redirect to a file
-or your platform's log capture as needed.
+new trigger-timeframe candle has closed — detected data-drivenly via
+`last_trigger_open_seen` / `newest_closed_open_time` in `main.py` (robust
+for any native interval, no epoch-boundary assumptions). Logs go to
+stdout (`logging.basicConfig`); redirect to a file or your platform's log
+capture as needed.
 
 ### Stopping
 
@@ -111,11 +125,16 @@ so a restart begins a fresh day/equity curve from `config.yaml`'s
 
 ### Configuring
 
-Edit `config.yaml` for risk %, indicator periods, R:R minimum, and
-heartbeat interval. **Never lower `risk.circuit_breaker_halt_pct` below
-−2.5%** (build spec section 6/11 — it's a hard-coded constant in
-`risk/circuit_breaker.py`, not read from config, specifically so it can't
-be casually widened).
+Edit `config.yaml` for account size, the sizing `risk_pct` default, fixed
+indicator periods, R:R minimum, and heartbeat interval. **Note:** the
+running engine reads active timeframes, indicator toggles, live risk
+params, and signal geometry from Postgres (`strategy_settings`,
+`indicator_config`, `risk_params` — set via the Telegram `/settings`
+menu), *not* from `config.yaml`; the `data:` block in `config.yaml`
+documents the seed only (the engine does not read it). **Never lower
+`risk.circuit_breaker_halt_pct` below −2.5%** (build spec section 6/11 —
+it's a hard-coded constant in `risk/circuit_breaker.py`, not read from
+config, specifically so it can't be casually widened).
 
 ### Reading logs / alerts
 
@@ -131,9 +150,13 @@ be casually widened).
 python -m pytest -q
 ```
 
-18 tests covering `risk/sizing.py`, `risk/circuit_breaker.py`, and
-`ledger/tracker.py` against synthetic data (no live API calls) — all
-passing as of the 2026-07-07 implementation pass. These are the
+The suite is **240 tests across 29 files** (229 passing, 11 skipped in a
+default environment) covering the strategy, risk, ledger, alerts,
+execution-client and data layers against synthetic data (no live API
+calls). The 11 skips are the DB-backed suites that need
+`TEST_DATABASE_URL` (`tests/test_db_trigger.py`,
+`tests/test_forward_report.py` — see below) plus the web-dashboard tests
+that need the optional `web/requirements.txt` deps. These are the
 acceptance contract: if a change breaks one, fix the module, not the
 test.
 
@@ -152,29 +175,28 @@ python -m pytest tests/test_db_trigger.py -v   # 7 passed
 See `docs/V2_RUNBOOK.md` → "Running the DB tests" for the rationale (the
 2026-07-08 live-engine-paused incident) and the live-ref guard.
 
-## Stage 2 integration notes (not built here)
+## Stage 2 integration notes (execution layer — partially built)
 
-Stage 2 adds a Propr execution layer on an ASUS NUC. To slot it in without
-touching strategy code:
+The Propr execution layer now exists as `execution/propr_client.py`
+(dry-run-gated) wrapping the vendored SDK, and `main.py` already wires the
+entry-signal branch to `create_entry_with_bracket(...)` on an ACTIVE
+engine state — all behind the two-switch dry-run gate. Strategy code was
+not touched (module firewall preserved). Remaining work to go fully live:
 
-1. Replace `execution/propr_stub.py`'s methods with real Propr API calls
-   (`docs/RESEARCH_FINDINGS.md` 3.1 has the confirmed endpoint shapes for
-   order placement/cancellation and position queries).
-2. **Resolve the account-equity endpoint gap first** — no confirmed Propr
+1. **Resolve the account-equity endpoint gap first** — no confirmed Propr
    endpoint returns live total equity (see Open Items below). `main.py`
-   currently derives "equity" purely from the hypothetical ledger; Stage 2
-   must decide whether to trust Propr's real equity or keep paper-tracking
-   in parallel for reconciliation.
-3. Wire `main.py`'s entry-signal branch to call the (now real)
-   `execution/propr_stub.py` instead of only `ledger.open_hypothetical_position`
-   — gated behind `feature_flags.execution_enabled` in `config.yaml`, which
-   Stage 1 keeps hard-off.
-4. Feed live Propr position/fill data into `ledger/tracker.py` in place of
+   currently derives "equity" purely from the hypothetical ledger; going
+   live must decide whether to trust Propr's real equity or keep
+   paper-tracking in parallel for reconciliation.
+2. Feed live Propr position/fill data into `ledger/tracker.py` in place of
    the price-touch simulation, so exits reflect real fills, not idealized
    stop/target execution.
-5. Add reconciliation logging comparing Propr's reported equity against
+3. Add reconciliation logging comparing Propr's reported equity against
    the ledger's tracked equity — any divergence should be a WARNING per
    this project's no-silent-fallback rule.
+4. Harden the order-dispatch error paths before flipping either switch —
+   see the code-health notes (`create_entry_with_bracket`/`kill_sequence`
+   have no per-item retry/rollback today).
 
 ## Open Items / Needs Manual Confirmation
 
@@ -199,8 +221,8 @@ Full detail in `docs/RESEARCH_FINDINGS.md`. Consolidated:
 
 ## Risk & scope reminders
 
-- Signal-only. No backtest exists. No performance claims are made or
-  implied anywhere in this repo.
+- Execution is dry-run by default (two-switch gate — see the top of this
+  README). No performance claims are made or implied anywhere in this repo.
 - Prohibited by the Propr challenge terms and not present here: HFT,
   martingale, or grid logic.
 - All strategy decisions evaluate on closed candles only (no
