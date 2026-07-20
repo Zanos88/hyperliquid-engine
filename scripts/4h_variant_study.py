@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 BASE = Path(__file__).resolve().parent.parent
-CANDLES_PATH = Path("/opt/data/candles-binance/BTC_4h_snapshot.json")
+CANDLES_PATH = BASE / "research" / "data" / "BTC_4h_snapshot.json"
 OUTPUT = BASE / "research" / "output" / "4h_study_results.json"
 
 # ── parameters ─────────────────────────────────────────────────────────
