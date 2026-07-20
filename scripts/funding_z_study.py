@@ -41,7 +41,7 @@ BARS_PER_YEAR = 365.0     # daily returns
 ANNUAL_TRADING_DAYS = 365.0
 
 # ── Parameter grid ──────────────────────────────────────────────────────
-LOOKBACKS = [24, 48, 168]       # hours: 1d, 2d, 7d rolling window
+LOOKBACKS = [24, 48, 168]       # days: 24d, ~48d, ~168d (1, 2, ~7 months) rolling window
 ENTRY_THRESHOLDS = [1.0, 1.5, 2.0]  # z-score magnitude (negative)
 MAX_HOLD_HOURS = [24, 48, 72]        # max holding period
 
@@ -66,7 +66,7 @@ def load_candles_1d(path: Path):
     # schema: [open_time_ms, close_time_ms, open, high, low, close, volume]
     closes = {}
     for c in candles:
-        closes[c[0]] = c[4]  # open_time_ms -> close_price
+        closes[c[0]] = c[5]  # open_time_ms -> close_price (index 5 = close)
     return closes
 
 
@@ -106,22 +106,23 @@ def run_study():
     print(f"  Candle days: {len(candles_1d)}")
 
     # ── Build aligned timeline ───────────────────────────────────────────
-    # Map each funding bar to the NEXT day's return (no lookahead)
-    # Funding timestamp is the start of the hour
-    # We align: if funding time t falls on day D, the signal trades day D+1's return
+    # CRITICAL: Signal (last-hour funding of day D) must trade day D+1's return.
+    # Using day D's own return is lookahead — it's realized at the same instant
+    # the close-of-day funding rate is observed.
     
     # Get sorted daily close timestamps
     daily_ts = sorted(candles_1d.keys())
     
-    # Map each daily bar's open_time_ms to its date (day start)
-    # A daily bar with open_time_ms = T covers [T, T + 24h)
-    # Funding at hour H is known at the END of hour H (i.e., at H+1h)
-    # For simplicity: if funding bar timestamp is within day D, signal trades day D+1
-    
+    # daily_returns[t] = log(close_t / close_{t-1}) = return realized during day T
     daily_returns = {}
     for i in range(1, len(daily_ts)):
         ret = daily_return(candles_1d[daily_ts[i]], candles_1d[daily_ts[i-1]])
         daily_returns[daily_ts[i]] = ret
+
+    # Map each day to the NEXT day's close-to-close return (no lookahead)
+    next_day_return = {}
+    for i in range(len(daily_ts) - 1):
+        next_day_return[daily_ts[i]] = daily_returns[daily_ts[i + 1]]
 
     # Build a mapping: day_ts (open_time_ms) -> list of funding rates for that day
     # 86400000 ms = 1 day
@@ -145,7 +146,7 @@ def run_study():
     
     aligned_days = []
     for day_ts in sorted(funding_by_day.keys()):
-        if day_ts in daily_returns:
+        if day_ts in daily_returns and day_ts in next_day_return:
             day_rates = [r for _, r in funding_by_day[day_ts]]
             if len(day_rates) > 0:
                 last_hour_rate = day_rates[-1]  # the rate known at day's end
@@ -153,7 +154,7 @@ def run_study():
                     "day_ts": day_ts,
                     "rate": last_hour_rate,
                     "all_rates": day_rates,
-                    "return_tomorrow": daily_returns[day_ts],
+                    "return_tomorrow": next_day_return[day_ts],
                 })
 
     print(f"  Aligned days (funding + next-day return): {len(aligned_days)}")
@@ -284,9 +285,9 @@ def run_study():
                     # Store result
                     result_entry = {
                         "config": label,
-                        "lookback_hours": lookback,
+                        "lookback_days": lookback,
                         "entry_z_threshold": threshold,
-                        "max_hold_hours": max_hold,
+                        "max_hold_bars": max_hold,
                         "window": window_name,
                         "bars": len(data),
                         "sharpe_ann": round(sharpe, 4),
@@ -432,9 +433,9 @@ def run_study():
             "price": "research/data/BTC_1d_snapshot.json",
         },
         "parameter_grid": {
-            "lookback_hours": LOOKBACKS,
+            "lookback_days": LOOKBACKS,
             "entry_z_thresholds": ENTRY_THRESHOLDS,
-            "max_hold_hours": MAX_HOLD_HOURS,
+            "max_hold_bars": MAX_HOLD_HOURS,
         },
         "split": {
             "fraction": SPLIT_FRACTION,
