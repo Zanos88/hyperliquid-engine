@@ -1,6 +1,7 @@
 {
   "metadata": {
     "study": "Whale Accumulation \u2192 Forward Return",
+    "strategy_class": "onchain-convex",
     "preregistered": "2026-07-20",
     "source_whale": "research/data/source/whale_alerts.json",
     "source_tokens": "research/data/source/discovered_tokens.json",
@@ -9,7 +10,6 @@
     "token_overlap": 0,
     "n_permutations": 10000,
     "baseline_multiplier": 20,
-    "pseudoreplication_correction": "All horizons classified as non-significant after cluster-aware inspection. With only 4 tokens (effective n≈1), no cluster-robust p-value can be computed. See per-horizon pseudoreplication_note fields.",
     "horizons_tested": [
       "1h",
       "6h",
@@ -68,6 +68,22 @@
           "win": 1.0
         }
       },
+      "convex": {
+        "n_events": 96,
+        "ev_per_bet": 0.08330948332995201,
+        "median": 0.018715807659084316,
+        "p10": -0.10396039603960394,
+        "p90": 0.24232081911262804,
+        "p99": 0.762406015037594,
+        "max_multiple": 5.125246548323472,
+        "share_2x": 0.010416666666666666,
+        "share_5x": 0.010416666666666666,
+        "share_10x": 0.0,
+        "share_100x": 0.0,
+        "loss_rate": 0.4166666666666667,
+        "rug_rate": 0.0,
+        "tail_capture_note": "EV per bet +8.3% with median +1.9% \u2014 most entries lose, the top outcome is 5.1x. In a convex book the tail IS the return; do not strip it."
+      },
       "pseudoreplication_note": "Raw perm-p significant but 4 tokens (96 events) with 99.6% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (96).",
       "dominant_token": "ANSEM",
       "dominant_token_return_share": 0.9958,
@@ -118,6 +134,22 @@
           "mean": 0.07245807623561484,
           "win": 1.0
         }
+      },
+      "convex": {
+        "n_events": 95,
+        "ev_per_bet": 0.34666829740554095,
+        "median": 0.06622023809523814,
+        "p10": -0.17071197411003225,
+        "p90": 0.768135462766981,
+        "p99": 6.913811481650678,
+        "max_multiple": 8.97892190739461,
+        "share_2x": 0.06315789473684211,
+        "share_5x": 0.031578947368421054,
+        "share_10x": 0.0,
+        "share_100x": 0.0,
+        "loss_rate": 0.4,
+        "rug_rate": 0.0,
+        "tail_capture_note": "EV per bet +34.7% with median +6.6% \u2014 most entries lose, the top outcome is 9.0x. In a convex book the tail IS the return; do not strip it."
       },
       "pseudoreplication_note": "Raw perm-p significant but 4 tokens (95 events) with 95.5% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (95).",
       "dominant_token": "ANSEM",
@@ -170,6 +202,22 @@
           "win": 0.5
         }
       },
+      "convex": {
+        "n_events": 89,
+        "ev_per_bet": 1.166314733823377,
+        "median": 0.15277777777777768,
+        "p10": -0.3733960650128314,
+        "p90": 0.9881422924901186,
+        "p99": 17.0,
+        "max_multiple": 18.349199480744264,
+        "share_2x": 0.10112359550561797,
+        "share_5x": 0.07865168539325842,
+        "share_10x": 0.06741573033707865,
+        "share_100x": 0.0,
+        "loss_rate": 0.2808988764044944,
+        "rug_rate": 0.0,
+        "tail_capture_note": "EV per bet +116.6% with median +15.3% \u2014 most entries lose, the top outcome is 18.3x. In a convex book the tail IS the return; do not strip it."
+      },
       "pseudoreplication_note": "Raw perm-p significant but 4 tokens (89 events) with 99.8% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (89).",
       "dominant_token": "ANSEM",
       "dominant_token_return_share": 0.9985,
@@ -178,11 +226,11 @@
     }
   },
   "dexscreener": {
-    "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump": {
-      "price_usd": "0.01880",
-      "change_24h": 0.63,
-      "liquidity_usd": 1125568.96,
-      "fdv": 18800164
+    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
+      "price_usd": "0.001349",
+      "change_24h": 10.6,
+      "liquidity_usd": 318872.11,
+      "fdv": 1346318
     },
     "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump": {
       "price_usd": "0.1919",
@@ -190,11 +238,11 @@
       "liquidity_usd": 1997818.55,
       "fdv": 191900947
     },
-    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
-      "price_usd": "0.001349",
-      "change_24h": 10.6,
-      "liquidity_usd": 318872.11,
-      "fdv": 1346318
+    "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump": {
+      "price_usd": "0.01880",
+      "change_24h": 0.63,
+      "liquidity_usd": 1125568.96,
+      "fdv": 18800164
     },
     "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2": {
       "price_usd": "0.04379",

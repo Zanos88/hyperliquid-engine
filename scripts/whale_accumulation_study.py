@@ -313,6 +313,38 @@ def get_pseudoreplication_note(by_sym, sig_dv, label):
         effective_token_count=n_tokens,
         n_cluster_adjusted_perm_p="N/A (n_clusters < 5)")
 
+
+# ── Convex (onchain-convex) metrics ──────────────────────────────────────────
+def convex_metrics(event_rets):
+    """Judge a positive-skew signal on its own terms. event_rets = fractional forward returns
+    (0.59 = +59%, 9.0 = 10x). For this class the OUTLIER is the return, not noise to strip."""
+    n = len(event_rets)
+    if n == 0:
+        return {}
+    srt = sorted(event_rets)
+    def pct(p):
+        i = min(n - 1, max(0, int(round(p / 100.0 * (n - 1)))))
+        return srt[i]
+    def mult_share(thresh):  # share of events reaching >= thresh multiple (2x -> ret>=1.0)
+        return sum(1 for r in event_rets if r >= (thresh - 1.0)) / n
+    ev = sum(event_rets) / n
+    total_gain = sum(r for r in event_rets if r > 0)
+    top = max(event_rets)
+    return dict(
+        n_events=n,
+        ev_per_bet=ev,                       # expected fractional return per unit staked
+        median=pct(50),
+        p10=pct(10), p90=pct(90), p99=pct(99),
+        max_multiple=1.0 + top,              # best single outcome, as a price multiple
+        share_2x=mult_share(2), share_5x=mult_share(5),
+        share_10x=mult_share(10), share_100x=mult_share(100),
+        loss_rate=sum(1 for r in event_rets if r <= 0) / n,         # most bets lose, by design
+        rug_rate=sum(1 for r in event_rets if r <= -0.9) / n,       # ~total loss (>= -90%)
+        tail_capture_note=(
+            f"EV per bet {ev*100:+.1f}% with median {pct(50)*100:+.1f}% — most entries lose, the top "
+            f"outcome is {1.0+top:.1f}x. In a convex book the tail IS the return; do not strip it."),
+    )
+
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 70)
@@ -402,6 +434,7 @@ def main():
             perm_p=p_perm, bonf_alpha=bonf, significant=False,  # see pseudoreplication_note
             signal_win_rate=wr_s, baseline_win_rate=wr_b,
             token_breakdown={sym:{'n':len(rv),'mean':sum(rv)/len(rv),'win':sum(1 for r in rv if r>0)/len(rv)} for sym,rv in by_sym.items()},
+            convex=convex_metrics(sig_dv),
             **get_pseudoreplication_note(by_sym, sig_dv, lbl))
 
     # 5. DexScreener current state
@@ -458,6 +491,7 @@ def main():
     out = dict(
         metadata=dict(
             study='Whale Accumulation → Forward Return',
+            strategy_class='onchain-convex',
             preregistered='2026-07-20',
             source_whale=os.path.relpath(os.path.join(DATA_DIR, 'whale_alerts.json'), REPO_ROOT),
             source_tokens=os.path.relpath(os.path.join(DATA_DIR, 'discovered_tokens.json'), REPO_ROOT),
