@@ -2,7 +2,8 @@
 
 **Pre-registered:** 2026-07-20  
 **Script:** `scripts/whale_accumulation_study.py`  
-**Cached data:** `research/data/dexscreener_cache/`  
+**Source data:** `research/data/source/whale_alerts.json` and `discovered_tokens.json`  |
+**Cached DexScreener:** `research/data/dexscreener_cache/`  |
 **Results JSON:** `research/output/whale_accumulation_results.json`
 
 ---
@@ -18,7 +19,7 @@ token, beyond a random-entry baseline?
 All rules below were written *before* any return calculations were computed.
 
 ### Entry rule
-- **Source:** `whale_alerts.json` from `/opt/data/mirror-bullphoric/`
+- **Source:** `whale_alerts.json` (committed at `research/data/source/whale_alerts.json`)
 - **Signal:** alert with `trigger='entry'`, `delta_pct > 0`, and
   `price_usd IS NOT NULL`
 - **Entry price:** `price_usd` at alert time
@@ -75,13 +76,15 @@ horizon.
 
 ### Forward returns vs random baseline
 
-| Horizon | Signal mean | Baseline mean | Δ | Perm p | Sig? (α=0.0167) | d |
-|---------|------------|---------------|---|--------|-----------------|---|
-| **1h** | +8.33% | +7.07% | +1.26% [-7.83%, +10.35%] | 0.3189 | ✗ | 0.037 |
-| **6h** | +34.67% | +12.25% | +22.42% [-2.41%, +47.25%] | **0.0058** | **✓** | 0.343 |
-| **24h** | +116.63% | +46.90% | +69.73% [-5.45%, +144.91%] | **0.0045** | **✓** | 0.353 |
+| Horizon | Signal mean | Baseline mean | Δ | Perm p | d | Note |
+|---------|------------|---------------|---|--------|---|------|
+| **1h** | +8.33% | +7.07% | +1.26% [-7.83%, +10.35%] | 0.3189 | 0.037 | Not significant. |
+| **6h** | +34.67% | +12.25% | +22.42% [-2.41%, +47.25%] | **0.0058** | 0.343 | Raw p significant but pseudoreplicated — 95.5% from ANSEM. |
+| **24h** | +116.63% | +46.90% | +69.73% [-5.45%, +144.91%] | **0.0045** | 0.353 | Raw p significant but pseudoreplicated — 99.8% from ANSEM. |
 
-**1h:** Not significant. Signal win rate (58%) is *below* baseline (68%),
+**Pseudoreplication correction:** All three horizons are classified as **not significant** after accounting for token-level clustering. Overlapping forward windows on the same token are treated as independent events in the permutation test, inflating the effective sample size. With only 4 tokens (effectively 1 driver), a cluster-robust p-value cannot be computed (n_clusters < 5). The raw perm-p values are reported above for transparency; they should not be interpreted as evidence of a generalizable effect.
+
+**1h:** Not significant by any measure. Signal win rate (58%) is *below* baseline (68%),
 meaning the higher signal mean comes purely from right-tail skew (a few
 big winners) while most signals underperform random entry.
 
@@ -135,10 +138,12 @@ one token with one major pump — not a replicable strategy.
 At the 1h horizon: **No.** Signal and baseline are indistinguishable
 (p = 0.32). The higher mean return is an artifact of right-tail skew.
 
-At 6h and 24h: **Statistically significant, but driven by a single token.**
-The 24h effect (Δ ≈ +70pp, d = 0.35) comes almost entirely from ANSEM,
-which ran from ~$0.005 to ~$0.19 during the study period. Every other
-token shows essentially zero predictive power.
+| At 6h and 24h: **Raw permutation p is significant, but this is an artifact of
+  pseudoreplication.** Overlapping forward windows on the same token are treated
+  as independent events, inflating effective n. The 24h effect (Δ ≈ +70pp, d = 0.35)
+  comes almost entirely from ANSEM (99.8% of total return), which ran from ~$0.005
+  to ~$0.19 during the study period. Every other token shows essentially zero
+  predictive power.
 
 **Practical assessment:** The effect is not promotable as a general
 signal. With only 4 tokens across 2 months of data, we cannot distinguish
@@ -175,6 +180,8 @@ is the more parsimonious explanation.
 ## Files
 
 - `scripts/whale_accumulation_study.py` — Full study pipeline
-- `research/data/dexscreener_cache/` — Cached API responses (reproducible offline)
+- `research/data/source/whale_alerts.json` — Input whale alert data (committed)
+- `research/data/source/discovered_tokens.json` — Input discovered tokens (committed)
+- `research/data/dexscreener_cache/` — Cached API responses
 - `research/output/whale_accumulation_results.json` — Complete results
 - `research/output/whale_accumulation_report.md` — This report

@@ -23,7 +23,12 @@ from collections import defaultdict
 # ── Config ──────────────────────────────────────────────────────────────────
 HORIZONS  = [3600, 21600, 86400]  # 1h, 6h, 24h
 H_LABEL   = {3600:'1h', 21600:'6h', 86400:'24h'}
-CACHE_DIR = '/opt/data/repos/btc-signal-bot/research/data/dexscreener_cache'
+# Repo-relative paths — override via env var WHALE_DATA_DIR for local development
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR  = os.environ.get('WHALE_DATA_DIR',
+    os.path.join(REPO_ROOT, 'research', 'data', 'source'))
+CACHE_DIR = os.path.join(REPO_ROOT, 'research', 'data', 'dexscreener_cache')
+OUTPUT_DIR = os.path.join(REPO_ROOT, 'research', 'output')
 SEED      = 42
 N_PERM    = 10_000
 BASELINE_MULT = 20  # 20x per signal event → ~4000 baseline/horizon
@@ -285,6 +290,29 @@ def ci_mean_diff(a, b):
     d = m1 - m2
     return d - 1.96*se, d + 1.96*se
 
+def get_pseudoreplication_note(by_sym, sig_dv, label):
+    """Assess whether the significance survives cluster-aware inspection.
+    Returns a dict with pseudoreplication_note and raw_perm_p so machine
+    readers can distinguish raw statistics vs the corrected verdict."""
+    # Find the dominant token's share of total return
+    total_ret = sum(sig_dv)
+    top_sym = max(by_sym.keys(), key=lambda s: sum(by_sym[s]))
+    top_ret = sum(by_sym[top_sym])
+    top_share = top_ret / total_ret if total_ret else 0
+    n_tokens = len(by_sym)
+    n_events = len(sig_dv)
+    return dict(
+        pseudoreplication_note=(
+            f"Raw perm-p significant but {n_tokens} tokens ({n_events} events) "
+            f"with {top_share*100:.1f}% of total return from {top_sym} alone. "
+            f"Overlapping forward windows on same token treated as independent. "
+            f"Effective independent units ~= number of tokens ({n_tokens}), not events ({n_events})."
+        ),
+        dominant_token=top_sym,
+        dominant_token_return_share=round(top_share, 4),
+        effective_token_count=n_tokens,
+        n_cluster_adjusted_perm_p="N/A (n_clusters < 5)")
+
 # ── Main ────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 70)
@@ -294,8 +322,8 @@ def main():
 
     # 1. Load
     print("\n[1] Loading data...")
-    wa = load_mirror('/opt/data/mirror-bullphoric/whale_alerts.json')
-    dt = load_mirror('/opt/data/mirror-bullphoric/discovered_tokens.json')
+    wa = load_mirror(os.path.join(DATA_DIR, 'whale_alerts.json'))
+    dt = load_mirror(os.path.join(DATA_DIR, 'discovered_tokens.json'))
     dt_map = {t['token_address']:t for t in dt if 'token_address' in t}
     wt_set = set(a.get('token_address') for a in wa if a.get('token_address'))
     overlap = wt_set & set(dt_map.keys())
@@ -371,9 +399,10 @@ def main():
             baseline_std=math.sqrt(sum((x-m_b)**2 for x in bs)/(len(bs)-1)) if len(bs)>1 else 0,
             mean_diff=m_s-m_b, ci_95=[cil, cih],
             cohens_d=d, welch_t=t_st, welch_df=df_st, welch_p=p_welch,
-            perm_p=p_perm, bonf_alpha=bonf, significant=p_perm < bonf,
+            perm_p=p_perm, bonf_alpha=bonf, significant=False,  # see pseudoreplication_note
             signal_win_rate=wr_s, baseline_win_rate=wr_b,
-            token_breakdown={sym:{'n':len(rv),'mean':sum(rv)/len(rv),'win':sum(1 for r in rv if r>0)/len(rv)} for sym,rv in by_sym.items()})
+            token_breakdown={sym:{'n':len(rv),'mean':sum(rv)/len(rv),'win':sum(1 for r in rv if r>0)/len(rv)} for sym,rv in by_sym.items()},
+            **get_pseudoreplication_note(by_sym, sig_dv, lbl))
 
     # 5. DexScreener current state
     print("\n[5] DexScreener current data...")
@@ -453,7 +482,7 @@ def main():
                 'change_24h': p.get('priceChange',{}).get('h24'),
                 'liquidity_usd': p.get('liquidity',{}).get('usd'),
                 'fdv': p.get('fdv')}
-    op = '/opt/data/repos/btc-signal-bot/research/output/whale_accumulation_results.json'
+    op = os.path.join(OUTPUT_DIR, 'whale_accumulation_results.json')
     os.makedirs(os.path.dirname(op), exist_ok=True)
     with open(op, 'w') as f:
         json.dump(out, f, indent=2, default=str)
