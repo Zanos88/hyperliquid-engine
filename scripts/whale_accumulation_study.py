@@ -459,8 +459,8 @@ def main():
         metadata=dict(
             study='Whale Accumulation → Forward Return',
             preregistered='2026-07-20',
-            source_whale='/opt/data/mirror-bullphoric/whale_alerts.json',
-            source_tokens='/opt/data/mirror-bullphoric/discovered_tokens.json',
+            source_whale=os.path.relpath(os.path.join(DATA_DIR, 'whale_alerts.json'), REPO_ROOT),
+            source_tokens=os.path.relpath(os.path.join(DATA_DIR, 'discovered_tokens.json'), REPO_ROOT),
             whale_tokens=len(wt_set), discovered_tokens=len(dt_map),
             token_overlap=len(overlap), n_permutations=N_PERM,
             baseline_multiplier=BASELINE_MULT, horizons_tested=[H_LABEL[h] for h in HORIZONS]),

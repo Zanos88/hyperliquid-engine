@@ -2,8 +2,8 @@
   "metadata": {
     "study": "Whale Accumulation \u2192 Forward Return",
     "preregistered": "2026-07-20",
-    "source_whale": "/opt/data/mirror-bullphoric/whale_alerts.json",
-    "source_tokens": "/opt/data/mirror-bullphoric/discovered_tokens.json",
+    "source_whale": "research/data/source/whale_alerts.json",
+    "source_tokens": "research/data/source/discovered_tokens.json",
     "whale_tokens": 4,
     "discovered_tokens": 1000,
     "token_overlap": 0,
