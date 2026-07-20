@@ -88,12 +88,15 @@ horizon.
 meaning the higher signal mean comes purely from right-tail skew (a few
 big winners) while most signals underperform random entry.
 
-**6h:** Significant. Δ ≈ +22pp. Signal win rate 60% vs baseline 53%.
-Effect size small-to-medium (d = 0.34).
+**6h:** Not significant after the pseudoreplication correction above (raw
+perm-p = 0.0058 < α, but the effect is 95.5% ANSEM and effective n ≈ 1
+token). Raw Δ ≈ +22pp, signal win rate 60% vs baseline 53%, effect size
+small-to-medium (d = 0.34) — none of which survives token-level clustering.
 
-**24h:** Significant. Δ ≈ +70pp. Signal win rate 72% vs baseline 71%
-(no edge in hit rate, only magnitude). Effect size small-to-medium
-(d = 0.35).
+**24h:** Not significant after the pseudoreplication correction above (raw
+perm-p = 0.0045 < α, but the effect is 99.8% ANSEM and effective n ≈ 1
+token). Raw Δ ≈ +70pp, signal win rate 72% vs baseline 71% (no edge in hit
+rate, only magnitude), effect size small-to-medium (d = 0.35).
 
 ### Per-token breakdown (drives the result)
 
@@ -107,7 +110,10 @@ Effect size small-to-medium (d = 0.34).
 | TROLL | 3 | +0.65% | 67% |
 
 The entire 24h effect is **ANSEM**. Without ANSEM, the remaining 39 events
-average ~+0.3% with a sub-50% win rate — indistinguishable from baseline.
+average +0.41% (n=39) — *below* the +46.90% random baseline (−46.49pp). At
+6h the ex-ANSEM mean is +3.50% (n=42) vs a +12.25% baseline (−8.75pp). The
+non-ANSEM whale-accumulation events do not merely fail to beat random entry;
+they underperform it.
 
 **6h:**
 
