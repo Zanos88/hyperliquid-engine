@@ -1,0 +1,243 @@
+{
+  "metadata": {
+    "n_bars": 2150,
+    "n_rets": 2149,
+    "comp_window": 5,
+    "comp_target_pct": 10.0,
+    "daily_loss_limit_pct": 5.0,
+    "taker_fee_pct": 0.075,
+    "n_configs_tested": 8,
+    "deflated_dsr": 0.8657,
+    "best_variant": "TSMOM14",
+    "best_variant_score": 7.45
+  },
+  "results": {
+    "TSMOM7_gross": {
+      "label": "TSMOM7_gross",
+      "sharpe": 0.127,
+      "dsr_prob": 0.6048,
+      "ann_ret_pct": -8.93,
+      "vol_pct": 57.87,
+      "max_dd_pct": -90.75,
+      "net_mult": 0.577,
+      "n_trades": 396,
+      "trade_freq_pct": 18.43,
+      "comp_5d_win_rate_pct": 7.55,
+      "comp_5d_mean_pct": 0.11,
+      "comp_5d_std_pct": 6.92,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.016,
+      "daily_loss_exceedance_pct": 3.7692
+    },
+    "TSMOM7_net": {
+      "label": "TSMOM7_net",
+      "sharpe": 0.127,
+      "dsr_prob": 0.6048,
+      "ann_ret_pct": -8.94,
+      "vol_pct": 57.9,
+      "max_dd_pct": -90.75,
+      "net_mult": 0.576,
+      "n_trades": 396,
+      "trade_freq_pct": 18.43,
+      "comp_5d_win_rate_pct": 7.51,
+      "comp_5d_mean_pct": 0.11,
+      "comp_5d_std_pct": 6.92,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.016,
+      "daily_loss_exceedance_pct": 3.7692
+    },
+    "TSMOM14_gross": {
+      "label": "TSMOM14_gross",
+      "sharpe": 0.93,
+      "dsr_prob": 0.9744,
+      "ann_ret_pct": 44.91,
+      "vol_pct": 57.76,
+      "max_dd_pct": -58.87,
+      "net_mult": 8.881,
+      "n_trades": 260,
+      "trade_freq_pct": 12.1,
+      "comp_5d_win_rate_pct": 8.44,
+      "comp_5d_mean_pct": 0.73,
+      "comp_5d_std_pct": 6.57,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.11,
+      "daily_loss_exceedance_pct": 3.9088
+    },
+    "TSMOM14_net": {
+      "label": "TSMOM14_net",
+      "sharpe": 0.93,
+      "dsr_prob": 0.9744,
+      "ann_ret_pct": 44.9,
+      "vol_pct": 57.77,
+      "max_dd_pct": -58.83,
+      "net_mult": 8.878,
+      "n_trades": 260,
+      "trade_freq_pct": 12.1,
+      "comp_5d_win_rate_pct": 8.34,
+      "comp_5d_mean_pct": 0.73,
+      "comp_5d_std_pct": 6.57,
+      "comp_5d_best_pct": 34.24,
+      "comp_5d_sharpe": 0.11,
+      "daily_loss_exceedance_pct": 3.9553
+    },
+    "TSMOM21_gross": {
+      "label": "TSMOM21_gross",
+      "sharpe": 0.578,
+      "dsr_prob": 0.887,
+      "ann_ret_pct": 18.2,
+      "vol_pct": 57.58,
+      "max_dd_pct": -69.61,
+      "net_mult": 2.677,
+      "n_trades": 205,
+      "trade_freq_pct": 9.54,
+      "comp_5d_win_rate_pct": 7.83,
+      "comp_5d_mean_pct": 0.44,
+      "comp_5d_std_pct": 6.69,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.066,
+      "daily_loss_exceedance_pct": 3.8623
+    },
+    "TSMOM21_net": {
+      "label": "TSMOM21_net",
+      "sharpe": 0.578,
+      "dsr_prob": 0.8871,
+      "ann_ret_pct": 18.21,
+      "vol_pct": 57.59,
+      "max_dd_pct": -69.62,
+      "net_mult": 2.678,
+      "n_trades": 205,
+      "trade_freq_pct": 9.54,
+      "comp_5d_win_rate_pct": 7.83,
+      "comp_5d_mean_pct": 0.45,
+      "comp_5d_std_pct": 6.69,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.066,
+      "daily_loss_exceedance_pct": 3.8623
+    },
+    "TSMOM30_gross": {
+      "label": "TSMOM30_gross",
+      "sharpe": 0.865,
+      "dsr_prob": 0.9651,
+      "ann_ret_pct": 39.37,
+      "vol_pct": 57.53,
+      "max_dd_pct": -56.45,
+      "net_mult": 7.059,
+      "n_trades": 184,
+      "trade_freq_pct": 8.56,
+      "comp_5d_win_rate_pct": 7.93,
+      "comp_5d_mean_pct": 0.68,
+      "comp_5d_std_pct": 6.73,
+      "comp_5d_best_pct": 34.15,
+      "comp_5d_sharpe": 0.102,
+      "daily_loss_exceedance_pct": 3.8623
+    },
+    "TSMOM30_net": {
+      "label": "TSMOM30_net",
+      "sharpe": 0.865,
+      "dsr_prob": 0.9651,
+      "ann_ret_pct": 39.38,
+      "vol_pct": 57.51,
+      "max_dd_pct": -56.45,
+      "net_mult": 7.063,
+      "n_trades": 184,
+      "trade_freq_pct": 8.56,
+      "comp_5d_win_rate_pct": 7.93,
+      "comp_5d_mean_pct": 0.68,
+      "comp_5d_std_pct": 6.73,
+      "comp_5d_best_pct": 34.24,
+      "comp_5d_sharpe": 0.102,
+      "daily_loss_exceedance_pct": 3.8623
+    },
+    "BuyHold": {
+      "label": "BuyHold",
+      "sharpe": 0.778,
+      "dsr_prob": 0.9486,
+      "ann_ret_pct": 32.72,
+      "vol_pct": 57.86,
+      "max_dd_pct": -76.67,
+      "net_mult": 5.294,
+      "n_trades": 0,
+      "trade_freq_pct": 0.0,
+      "comp_5d_win_rate_pct": 7.55,
+      "comp_5d_mean_pct": 0.62,
+      "comp_5d_std_pct": 6.75,
+      "comp_5d_best_pct": 25.73,
+      "comp_5d_sharpe": 0.092,
+      "daily_loss_exceedance_pct": 4.1415
+    },
+    "TSMOM7_wfcv": {
+      "fold_sharpes": [
+        -0.776,
+        0.502,
+        -1.136,
+        0.294
+      ],
+      "mean_sharpe": -0.279,
+      "std_sharpe": 0.8,
+      "mean_trades_per_fold": 81.0
+    },
+    "TSMOM14_wfcv": {
+      "fold_sharpes": [
+        -0.095,
+        1.199,
+        0.45,
+        0.79
+      ],
+      "mean_sharpe": 0.586,
+      "std_sharpe": 0.548,
+      "mean_trades_per_fold": 55.0
+    },
+    "TSMOM21_wfcv": {
+      "fold_sharpes": [
+        -0.164,
+        1.245,
+        0.301,
+        0.08
+      ],
+      "mean_sharpe": 0.366,
+      "std_sharpe": 0.616,
+      "mean_trades_per_fold": 41.0
+    },
+    "TSMOM30_wfcv": {
+      "fold_sharpes": [
+        0.188,
+        1.803,
+        -0.233,
+        0.147
+      ],
+      "mean_sharpe": 0.476,
+      "std_sharpe": 0.905,
+      "mean_trades_per_fold": 40.0
+    },
+    "TSMOM7_penalty_0bps": {
+      "cost_bps": 0,
+      "sharpe": 0.238,
+      "n_trades": 386
+    },
+    "TSMOM7_penalty_315bps": {
+      "cost_bps": 3.15,
+      "sharpe": 0.238,
+      "n_trades": 386
+    },
+    "TSMOM7_penalty_630bps": {
+      "cost_bps": 6.3,
+      "sharpe": 0.238,
+      "n_trades": 386
+    },
+    "TSMOM7_penalty_944bps": {
+      "cost_bps": 9.45,
+      "sharpe": 0.238,
+      "n_trades": 386
+    },
+    "TSMOM7_penalty_1260bps": {
+      "cost_bps": 12.6,
+      "sharpe": 0.238,
+      "n_trades": 386
+    },
+    "TSMOM7_penalty_1800bps": {
+      "cost_bps": 18.0,
+      "sharpe": 0.238,
+      "n_trades": 386
+    }
+  }
+}

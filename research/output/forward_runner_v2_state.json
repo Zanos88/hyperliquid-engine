@@ -1,0 +1,15 @@
+{
+  "current_signal": 1,
+  "last_update": "2026-07-20T05:17:19.779835+00:00",
+  "last_sizing": {
+    "action": "ENTER_LONG",
+    "size": 0.86,
+    "leverage": 0.86,
+    "notional_usd": 86135.35,
+    "qty_btc": 1.382967,
+    "entry_price": 62283.0,
+    "stop_price": 60414.51,
+    "daily_loss_room": 5000.0,
+    "rationale": "TSMOM14 signal=LONG, kelly=1.00, lev=0.9x"
+  }
+}
