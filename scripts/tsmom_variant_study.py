@@ -12,7 +12,7 @@ Tests TSMOM7, TSMOM14, TSMOM21, TSMOM30 across:
 7. Fill penalty sensitivity across lookbacks
 
 NOTE: This is a momentum STUDY, not a comp-ready deployment claim.
-MaxDD of the best variant (TSMOM14) is -58.8% — disqualifying for a 10%
+MaxDD of the best variant (TSMOM14) is -59.3% — disqualifying for a 10%
 comp drawdown limit without additional position-level DD capping.
 """
 import json, sys, os
@@ -57,17 +57,26 @@ def ts_momentum(lookback: int, rets: np.ndarray) -> np.ndarray:
     return pos
 
 
-def apply_costs(strategy_rets: np.ndarray, strategy_pos: np.ndarray, costs: float):
-    """Deduct one-sided taker fee on each flip bar."""
-    if costs > 0:
-        trade_count = int(np.sum(np.abs(np.diff(strategy_pos)) > 0))
-        if trade_count > 0:
-            flip_bars = np.where(np.abs(np.diff(strategy_pos)) > 0)[0] + 1
-            for fb in flip_bars:
-                if fb < len(strategy_rets):
-                    strategy_rets[fb] -= costs
-        return trade_count
-    return 0
+def apply_costs(bar_rets: np.ndarray, strategy_pos: np.ndarray, costs: float):
+    """Debit the one-sided taker fee on each flip bar of the DIRECTIONAL PnL.
+
+    The fee is a cost paid to execute a trade and always reduces equity,
+    regardless of whether the flip is into a long or a short. It must
+    therefore be subtracted from the position-adjusted return (bar_rets),
+    NOT from the raw market return before the position sign is applied —
+    doing the latter credits the fee on short flips (pos * (r - c) = -r + c)
+    and makes 'net' indistinguishable from gross.
+
+    Trade count is computed unconditionally so gross and net configs report
+    the same number of trades.
+    """
+    trade_count = int(np.sum(np.abs(np.diff(strategy_pos)) > 0))
+    if costs > 0 and trade_count > 0:
+        flip_bars = np.where(np.abs(np.diff(strategy_pos)) > 0)[0] + 1
+        for fb in flip_bars:
+            if fb < len(bar_rets):
+                bar_rets[fb] -= costs
+    return trade_count
 
 
 def compute_metrics(label: str, rets: np.ndarray, pos: np.ndarray,
@@ -81,10 +90,10 @@ def compute_metrics(label: str, rets: np.ndarray, pos: np.ndarray,
     strategy_rets = rets[:len(pos)].copy()
     strategy_pos = pos[:len(strategy_rets)].copy()
 
-    # Apply costs
-    trade_count = apply_costs(strategy_rets, strategy_pos, costs)
-
+    # Directional PnL BEFORE costs, then debit the taker fee on flip bars so it
+    # always reduces PnL (see apply_costs docstring).
     bar_rets = strategy_pos * strategy_rets
+    trade_count = apply_costs(bar_rets, strategy_pos, costs)
 
     # Vol (annualized)
     vol_daily = np.std(bar_rets, ddof=1) if np.std(bar_rets, ddof=1) > 1e-10 else 1e-10
@@ -195,9 +204,9 @@ def walk_forward_cv(lookback: int, rets: np.ndarray, costs: float = 0.0):
         if len(val_rets) < 10:
             continue
 
-        trade_count = apply_costs(val_rets, val_pos_aligned, costs)
-
         bar_rets = val_pos_aligned * val_rets
+        trade_count = apply_costs(bar_rets, val_pos_aligned, costs)
+
         vol = np.std(bar_rets, ddof=1) if np.std(bar_rets, ddof=1) > 1e-10 else 1e-10
         sr = (np.mean(bar_rets) / vol) * np.sqrt(365) if vol > 0 else 0
 
@@ -337,7 +346,8 @@ def main():
 
     # ── Deflated Sharpe ──
     print("\n── Honest Deflated Sharpe ──")
-    # Deflate across the 4 lookback × gross/net = 8 configs tested in THIS script
+    # Deflate across the 4 lookback variants tested in THIS script (gross keys;
+    # gross/net are the same signal at two cost levels, not independent trials)
     all_sharpes = []
     for k, v in all_results.items():
         if "sharpe" in v and "gross" in k:
@@ -360,8 +370,8 @@ def main():
     else:
         dsr = 0
 
-    print(f"  Configs tested in this script: {n_configs_here} "
-          f"(4 lookbacks × gross/net)")
+    print(f"  Independent variants deflated in this script: {n_configs_here} "
+          f"(the 4 lookbacks)")
     print(f"  NOTE: This deflates only across variants in THIS study.")
     print(f"  The repo has tested ~dozens of strategies across prior studies;")
     print(f"  the true familywise deflated Sharpe is lower still.")
@@ -431,14 +441,18 @@ def main():
             }
 
     if best_variant:
-        print(f"\n  🏆 Best variant by comp score: {best_variant['variant']}")
+        bv = best_variant["variant"]
+        bv_oos = all_results.get(f"{bv}_oos", {})
+        bv_holdout_sr = bv_oos.get("holdout", {}).get("sharpe", "N/A")
+        print(f"\n  🏆 Best variant by comp score: {bv}")
         print(f"     5d win rate: {best_variant['win_rate_pct']:.1f}%")
         print(f"     Mean 5d return: {best_variant['mean_5d_pct']:.2f}%")
         print(f"     5-day breach probability: {best_variant['dd_exceedance_pct']:.1f}%")
         print(f"     Sharpe: {best_variant['sharpe']:.3f}")
         print(f"     MaxDD: {best_variant['max_dd_pct']:.1f}%")
         print()
-        print(f"  HONEST CONCLUSION: TSMOM14 has genuine momentum edge (OOS Sharpe 1.235).")
+        print(f"  HONEST CONCLUSION: {bv} has genuine momentum edge "
+              f"(OOS holdout Sharpe {bv_holdout_sr}).")
         print(f"  However, MaxDD of {best_variant['max_dd_pct']:.1f}% violates any 10% comp DD limit.")
         print(f"  Not comp-ready without a position-level DD cap. Use as a momentum signal,")
         print(f"  not a comp deploy.")
@@ -467,8 +481,10 @@ def main():
                 row += f"{'ERR':>8} "
         print(row)
     print("  (Costs modelled as one-sided taker deduction on flip bars — no slippage model.)")
-    print("  Net ≈ gross at low penalties because one flip per trade at 3-18bps barely")
-    print("  moves annualized Sharpe on 365-day annualization. Real fills would add slippage.")
+    print("  The fee now always DEBITS PnL (fixed a sign bug where it was credited on short")
+    print("  flips), so higher penalties monotonically erode Sharpe. TSMOM14 (260 trades)")
+    print("  degrades ~0.024 Sharpe per 3.15bps; TSMOM7 (396 trades) turns negative by ~9bps.")
+    print("  Real fills would add slippage on top of this.")
 
     # ── Verdict ──
     print("\n── Verdict ──")
@@ -488,8 +504,8 @@ def main():
         print(f"  Net mult: {v['net_mult']}x | Max DD: {v['max_dd_pct']}% "
               f"| Trades: {v['n_trades']}")
 
-        # OOS result
-        oos_key = f"TSMOM{best_name}_oos"
+        # OOS result (best_name already carries the "TSMOM" prefix)
+        oos_key = f"{best_name}_oos"
         oos = all_results.get(oos_key, {})
         if oos:
             hs = oos.get("holdout", {}).get("sharpe", "N/A")
@@ -522,9 +538,15 @@ def main():
 
     # ── Comp readiness conclusion ──
     print(f"\n── Comp Readiness Conclusion ──")
-    print(f"  TSMOM14 has a real momentum edge confirmed OOS (holdout Sharpe 1.235).")
-    print(f"  However, the full-span MaxDD of -58.8% (or -31.8% even on holdout)")
-    print(f"  violates any 10% comp DD limit by a wide margin.")
+    if best_tsmom:
+        _bn = best_tsmom["variant"]
+        _oos = all_results.get(f"{_bn}_oos", {})
+        _hs = _oos.get("holdout", {}).get("sharpe", "N/A")
+        _full_dd = best_tsmom.get("max_dd_pct", "N/A")
+        _hold_dd = _oos.get("holdout", {}).get("max_dd_pct", "N/A")
+        print(f"  {_bn} has a real momentum edge confirmed OOS (holdout Sharpe {_hs}).")
+        print(f"  However, the full-span MaxDD of {_full_dd}% (or {_hold_dd}% even on holdout)")
+        print(f"  violates any 10% comp DD limit by a wide margin.")
     print(f"  This study is a signal-quality audit — NOT a comp-ready certification.")
     print(f"  To deploy within comp constraints, a position-level DD cap")
     print(f"  must reduce effective sizing so the account never breaches 10% DD.")
@@ -542,11 +564,11 @@ def main():
             "n_configs_tested": config_count,
             "n_configs_deflated": n_configs_here,
             "deflated_dsr": round(dsr, 4),
-            "deflated_dsr_note": "Deflated across only the 8 variants in this script. True familywise DSR across ALL tested strategies (dozens) is lower.",
+            "deflated_dsr_note": "Deflated across only the 4 lookback variants in this script. True familywise DSR across ALL tested strategies (dozens) is lower.",
             "best_variant": best_variant["variant"] if best_variant else "none",
             "best_variant_score": round(best_variant["score"], 2) if best_variant else 0,
             "comp_ready": False,
-            "comp_ready_note": "MaxDD -58.8% exceeds any 10% comp DD limit. Requires position-level DD capping.",
+            "comp_ready_note": "MaxDD -59.3% exceeds any 10% comp DD limit. Requires position-level DD capping.",
             "split_index": split_index,
             "split_close_utc": split_close_utc,
         },
