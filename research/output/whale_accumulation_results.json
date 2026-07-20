@@ -1,0 +1,190 @@
+{
+  "metadata": {
+    "study": "Whale Accumulation \u2192 Forward Return",
+    "preregistered": "2026-07-20",
+    "source_whale": "/opt/data/mirror-bullphoric/whale_alerts.json",
+    "source_tokens": "/opt/data/mirror-bullphoric/discovered_tokens.json",
+    "whale_tokens": 4,
+    "discovered_tokens": 1000,
+    "token_overlap": 0,
+    "n_permutations": 10000,
+    "baseline_multiplier": 20,
+    "horizons_tested": [
+      "1h",
+      "6h",
+      "24h"
+    ]
+  },
+  "caveats": [
+    "whale_alerts capped at 1000 rows (PostgREST server-side limit); recent-window sample.",
+    "filter_rejections table EMPTY \u2014 all tokens passed bot filter; survivorship bias.",
+    "DexScreener gives current/recent pair data, not historical OHLCV. Forward returns measured from alert-to-alert prices (irregular sampling).",
+    "Only 4 unique tokens; results heavily token-idiosyncratic (ANSEM drives most signal)."
+  ],
+  "results": {
+    "1h": {
+      "status": "complete",
+      "n_raw": 205,
+      "n_deduped": 96,
+      "n_baseline": 4020,
+      "signal_mean": 0.08330948332995201,
+      "baseline_mean": 0.07068205822618966,
+      "signal_std": 0.4514407190976369,
+      "baseline_std": 0.3362559835869822,
+      "mean_diff": 0.012627425103762357,
+      "ci_95": [
+        -0.07827579760223677,
+        0.10353064780976148
+      ],
+      "cohens_d": 0.03720984725674397,
+      "welch_t": 0.27226485999754185,
+      "welch_df": 97.53358512672195,
+      "welch_p": 0.7859939198366083,
+      "perm_p": 0.31886811318868113,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": false,
+      "signal_win_rate": 0.5833333333333334,
+      "baseline_win_rate": 0.6781094527363184,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": -0.004445211969663114,
+          "win": 0.3333333333333333
+        },
+        "ALON": {
+          "n": 36,
+          "mean": -0.0024942447160945453,
+          "win": 0.5
+        },
+        "ANSEM": {
+          "n": 54,
+          "mean": 0.14748053088764407,
+          "win": 0.6296296296296297
+        },
+        "NEET": {
+          "n": 3,
+          "mean": 0.04563005914366899,
+          "win": 1.0
+        }
+      }
+    },
+    "6h": {
+      "status": "complete",
+      "n_raw": 204,
+      "n_deduped": 95,
+      "n_baseline": 3992,
+      "signal_mean": 0.34666829740554095,
+      "baseline_mean": 0.12247186699182414,
+      "signal_std": 1.2308202695075747,
+      "baseline_std": 0.6343731990363741,
+      "mean_diff": 0.2241964304137168,
+      "ci_95": [
+        -0.02409248189483057,
+        0.47248534272226417
+      ],
+      "cohens_d": 0.3426826892475627,
+      "welch_t": 1.7698132370277322,
+      "welch_df": 95.19214540443093,
+      "welch_p": 0.0799602725388843,
+      "perm_p": 0.0057994200579942,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": true,
+      "signal_win_rate": 0.6,
+      "baseline_win_rate": 0.5253006012024048,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": 0.021779516872861986,
+          "win": 0.6666666666666666
+        },
+        "ALON": {
+          "n": 36,
+          "mean": 0.03299516127802839,
+          "win": 0.4166666666666667
+        },
+        "ANSEM": {
+          "n": 53,
+          "mean": 0.5936405597772064,
+          "win": 0.6981132075471698
+        },
+        "NEET": {
+          "n": 3,
+          "mean": 0.07245807623561484,
+          "win": 1.0
+        }
+      }
+    },
+    "24h": {
+      "status": "complete",
+      "n_raw": 192,
+      "n_deduped": 89,
+      "n_baseline": 3354,
+      "signal_mean": 1.166314733823377,
+      "baseline_mean": 0.469019958785209,
+      "signal_std": 3.6053348610681244,
+      "baseline_std": 1.9111775508764781,
+      "mean_diff": 0.697294775038168,
+      "ci_95": [
+        -0.05453554804848437,
+        1.4491250981248203
+      ],
+      "cohens_d": 0.35346935562971227,
+      "welch_t": 1.8178273968304548,
+      "welch_df": 89.31711487909415,
+      "welch_p": 0.0724431687057228,
+      "perm_p": 0.0044995500449955,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": true,
+      "signal_win_rate": 0.7191011235955056,
+      "baseline_win_rate": 0.7096004770423375,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": 0.0065124590700572265,
+          "win": 0.6666666666666666
+        },
+        "ALON": {
+          "n": 34,
+          "mean": 0.0016966394416859589,
+          "win": 0.47058823529411764
+        },
+        "ANSEM": {
+          "n": 50,
+          "mean": 2.072859481048709,
+          "win": 0.9
+        },
+        "NEET": {
+          "n": 2,
+          "mean": 0.040907069808803986,
+          "win": 0.5
+        }
+      }
+    }
+  },
+  "dexscreener": {
+    "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump": {
+      "price_usd": "0.01880",
+      "change_24h": 0.63,
+      "liquidity_usd": 1125568.96,
+      "fdv": 18800164
+    },
+    "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump": {
+      "price_usd": "0.1919",
+      "change_24h": -0.92,
+      "liquidity_usd": 1997818.55,
+      "fdv": 191900947
+    },
+    "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2": {
+      "price_usd": "0.04379",
+      "change_24h": -3.71,
+      "liquidity_usd": 2506145.67,
+      "fdv": 43740054
+    },
+    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
+      "price_usd": "0.001349",
+      "change_24h": 10.6,
+      "liquidity_usd": 318872.11,
+      "fdv": 1346318
+    }
+  }
+}
