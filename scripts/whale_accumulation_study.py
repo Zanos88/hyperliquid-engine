@@ -340,9 +340,132 @@ def convex_metrics(event_rets):
         share_10x=mult_share(10), share_100x=mult_share(100),
         loss_rate=sum(1 for r in event_rets if r <= 0) / n,         # most bets lose, by design
         rug_rate=sum(1 for r in event_rets if r <= -0.9) / n,       # ~total loss (>= -90%)
+        rug_rate_note=(
+            "rug_rate here is measured WITHIN the survivor sample (returns <= -90% on the "
+            "alert-to-alert price series). It is NOT a live sprayer's rug rate: DexScreener/source "
+            "carry no dead-token price series, so tokens that went to ~0 are absent. Treat 0.0 as "
+            "SURVIVORSHIP, not a measured zero. Realised EV = P(survive)*E[ret|survive] - P(rug), and "
+            "P(rug) is unmeasurable from this dataset (all 4 tokens survived)."),
         tail_capture_note=(
             f"EV per bet {ev*100:+.1f}% with median {pct(50)*100:+.1f}% — most entries lose, the top "
             f"outcome is {1.0+top:.1f}x. In a convex book the tail IS the return; do not strip it."),
+    )
+
+
+# ── Wilson score CI for a binomial hit rate ──────────────────────────────────
+def wilson_ci(k, n, z=1.96):
+    """Two-sided Wilson score interval for k successes in n trials."""
+    if n == 0:
+        return [0.0, 0.0]
+    p = k / n
+    d = 1 + z * z / n
+    centre = p + z * z / (2 * n)
+    halfw = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return [max(0.0, (centre - halfw) / d), min(1.0, (centre + halfw) / d)]
+
+
+# ── Class-C risk metrics: precedence, adverse selection, hit-rate CI, ruin ───
+def convex_risk_metrics(ded_events, by_token, horizon_s):
+    """Measure the class-C checks the convex thesis actually rests on, from committed data:
+      - hit-rate CIs (event-level AND episode/token-level, so small-n is honest)
+      - signal precedence proxy (does a higher price appear AFTER entry, in-window)
+      - adverse selection (does a tracked wallet EXIT into the window we hold — are we exit
+        liquidity), any-wallet and same-wallet-we-followed
+      - ruin / survival (loss rate, worst losing streak, equal-weight book multiple)
+    ded_events: list of deduped signal-event dicts for ONE horizon.
+    Rug rate is NOT here — it is unmeasurable from this survivor-only dataset (see rug_rate_note).
+    """
+    n = len(ded_events)
+    if n == 0:
+        return {}
+    rets = [e['ret'] for e in ded_events]
+    tokens = set(e['token'] for e in ded_events)
+    n_tok = len(tokens)
+
+    # Hit-rate CIs — event-level is over-precise (pseudoreplicated); episode-level over tokens
+    # is the honest bound on how many DISTINCT tokens actually reached the multiple.
+    hit = {}
+    for mult in (2, 5, 10, 100):
+        k_ev = sum(1 for r in rets if r >= mult - 1.0)
+        k_tok = len(set(e['token'] for e in ded_events if e['ret'] >= mult - 1.0))
+        hit[f'{mult}x'] = dict(
+            events=k_ev, event_rate=k_ev / n, event_ci95=wilson_ci(k_ev, n),
+            tokens_hit=k_tok, n_tokens=n_tok, episode_rate=k_tok / n_tok,
+            episode_ci95=wilson_ci(k_tok, n_tok))
+
+    # Precedence proxy — of the alerts on the same token strictly AFTER entry and within the
+    # horizon window, does any price exceed the entry price? i.e. the move develops AFTER the
+    # signal (entry-before-move), not before it. This is an in-sample proxy, NOT tx-level
+    # precedence (the source has no on-chain tx times for the accumulating wallet).
+    move_after = 0
+    for e in ded_events:
+        et = parse_ts(e['entry_time'])
+        wend = et + timedelta(seconds=horizon_s)
+        al = by_token[e['token']]
+        fwd = [a['price_usd'] for a in al
+               if a.get('price_usd') and et < parse_ts(a['alerted_at']) <= wend]
+        if fwd and max(fwd) > e['entry_price']:
+            move_after += 1
+
+    # Adverse selection — does a TRACKED wallet sell (trigger='exit') into the window we hold?
+    # 'any' = any tracked wallet on the token exits; 'same' = the very wallet whose accumulation
+    # we followed exits into our window (we are its exit liquidity).
+    adv_any = 0
+    adv_same = 0
+    for e in ded_events:
+        addr = e['token']
+        et = parse_ts(e['entry_time'])
+        wend = et + timedelta(seconds=horizon_s)
+        al = by_token[addr]
+        entry_wallet = next((a.get('wallet_address') for a in al
+                             if a.get('price_usd') == e['entry_price']
+                             and parse_ts(a['alerted_at']) == et), None)
+        found_any = found_same = False
+        for a in al:
+            if a.get('trigger') == 'exit':
+                at = parse_ts(a['alerted_at'])
+                if et < at <= wend:
+                    found_any = True
+                    if entry_wallet and a.get('wallet_address') == entry_wallet:
+                        found_same = True
+        adv_any += found_any
+        adv_same += found_same
+
+    # Ruin / survival — equal-weight spray across the n deduped bets. Downside is bounded at
+    # -100% per bet; worst losing streak = longest run of consecutive losers in time order.
+    ded_t = sorted(ded_events, key=lambda e: e['entry_time'])
+    streak = worst = 0
+    for e in ded_t:
+        if e['ret'] <= 0:
+            streak += 1
+            worst = max(worst, streak)
+        else:
+            streak = 0
+    loss_rate = sum(1 for r in rets if r <= 0) / n
+    book_mult = sum(1 + r for r in rets) / n   # equal-weight terminal book multiple = 1 + EV
+
+    return dict(
+        n_events=n, n_tokens=n_tok,
+        hit_rate_ci=hit,
+        precedence=dict(
+            move_after_entry=move_after, rate=move_after / n,
+            note=("Share of events where a higher price is seen AFTER entry within the window "
+                  "(move develops post-signal). IN-SAMPLE PROXY ONLY — the source has no on-chain "
+                  "tx timestamps, so true tracked-wallet-action-before-entry precedence is untested "
+                  "and remains the job of the live funder-wallet feature.")),
+        adverse_selection=dict(
+            any_wallet_exit=adv_any, any_wallet_rate=adv_any / n,
+            same_wallet_exit=adv_same, same_wallet_rate=adv_same / n,
+            note=("Share of held windows in which a tracked wallet posts an EXIT alert (sells). "
+                  "'same_wallet' = the wallet whose accumulation we followed sells into our window "
+                  "— we are its exit liquidity. High values mean the accumulation signal and the "
+                  "distribution overlap in time.")),
+        ruin=dict(
+            loss_rate=loss_rate, worst_losing_streak=worst,
+            equal_weight_book_multiple=book_mult,
+            note=("Equal-weight spray, bounded -100%/bet. Book multiple is SURVIVOR-ONLY (excludes "
+                  "rugged tokens absent from the source), so it is an upper bound; fund the worst "
+                  "losing streak with the full spray budget upfront.")),
     )
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -435,6 +558,7 @@ def main():
             signal_win_rate=wr_s, baseline_win_rate=wr_b,
             token_breakdown={sym:{'n':len(rv),'mean':sum(rv)/len(rv),'win':sum(1 for r in rv if r>0)/len(rv)} for sym,rv in by_sym.items()},
             convex=convex_metrics(sig_dv),
+            convex_risk=convex_risk_metrics(sig_deduped, by_token, h),
             **get_pseudoreplication_note(by_sym, sig_dv, lbl))
 
     # 5. DexScreener current state
@@ -502,7 +626,13 @@ def main():
             "whale_alerts capped at 1000 rows (PostgREST server-side limit); recent-window sample.",
             "filter_rejections table EMPTY — all tokens passed bot filter; survivorship bias.",
             "DexScreener gives current/recent pair data, not historical OHLCV. Forward returns measured from alert-to-alert prices (irregular sampling).",
-            "Only 4 unique tokens; results heavily token-idiosyncratic (ANSEM drives most signal)."],
+            "Only 4 unique tokens; results heavily token-idiosyncratic (ANSEM drives most signal).",
+            "Rug rate is UNMEASURABLE here (all 4 tokens survived; dead tokens absent from source) — "
+            "reported convex EV is EV|survived, an upper bound, not realised EV.",
+            "Adverse selection IS measured (convex_risk.adverse_selection): tracked wallets frequently "
+            "post EXIT alerts inside the held window — the accumulation signal overlaps distribution.",
+            "Precedence is an in-sample price proxy only; true tx-level precedence (wallet action "
+            "strictly before entry) needs on-chain timestamps not in this dataset."],
         results={},
         dexscreener={})
     for lbl, r in results.items():
