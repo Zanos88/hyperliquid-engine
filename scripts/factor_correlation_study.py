@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -109,8 +110,11 @@ HOLDOUT_SUPPORT_CRITERIA = "same sign as exploration AND |t_NW| >= 2.0 on holdou
 #  "direction": "long", "exploration_mean": 0.0123, "exploration_t_nw": 3.4}
 CANDIDATE_RULE: dict | None = None
 
-DATA_DIR = REPO_ROOT / "research" / "data"
-OUTPUT_DIR = REPO_ROOT / "research" / "output"
+# Data/output dirs are overridable via env so an extended candle dataset can be used for
+# research WITHOUT touching the frozen research/data snapshots. Unset = current behavior
+# (the audit reproduces against the frozen snapshots deterministically).
+DATA_DIR = Path(os.environ.get("BTC_DATA_DIR", str(REPO_ROOT / "research" / "data")))
+OUTPUT_DIR = Path(os.environ.get("BTC_OUTPUT_DIR", str(REPO_ROOT / "research" / "output")))
 
 
 # ── Section 1: data layer ───────────────────────────────────────────────
