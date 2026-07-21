@@ -14,18 +14,30 @@ visibility of accumulation into a young token) and the payoff is **convex** — 
 a few run many times over, and the tail is the entire return. Stripping the biggest winner and judging
 the rest — as the original pass did with ANSEM — measures the opposite of what the strategy is for.
 
-## Result — the thesis holds
+## Result — convex UPSIDE is real among survivors; the thesis is NOT yet validated
 
 | Horizon | EV per bet | Max multiple | ≥2x | ≥5x | ≥10x | Median |
 |---|---|---|---|---|---|---|
 | 6h  | **+34.7%** | 9.0x  | 6.3%  | 3.2% | 0.0% | +6.6% |
 | 24h | **+116.6%** | 18.3x | 10.1% | 7.9% | **6.7%** | +15.3% |
 
-At 24h, whale-accumulation entries returned **+117% expected value per bet**, with **~1 in 15 reaching
-10x or more** and a best single outcome of **18x**. ANSEM (n≈50 events, +207% mean at 24h, 90% up) is
-not an outlier to be removed — it is exactly the outcome the signal is meant to find, and in a convex
-book it is what pays for every entry that goes nowhere. **This validates the reason for the on-chain
-scans: accumulation flow precedes large early-life moves.**
+At 24h, **among tokens that survived to trade**, whale-accumulation entries showed **+117% EV | survived**,
+~1 in 15 reaching ≥10x, best single outcome 18x. The ANSEM-shaped tail is the right thing to be
+looking for in a convex book. **But this is an upper bound over survivors, not a validated edge — two
+required class-C checks are unmeasured, and both are load-bearing:**
+- **Rug rate is unmeasured (survivorship).** `rug_rate=0%` only because DexScreener has no dead tokens.
+  Realised EV = `P(survive)·E[ret|survive] − P(rug)`; with `P(rug)` unknown (and plausibly dominant for
+  young pump.fun pairs) the SIGN of realised EV is unknown. `+117%` is `EV|survived`, not EV.
+- **Precedence is untested.** The thesis is that accumulation *precedes* the move. The study measures
+  alert→forward-price but never verifies the tracked-wallet action came strictly BEFORE entry and entry
+  before the pump. The alert could be concurrent or lagging. Untested = no demonstrated informational edge.
+- The "6.7% reach ≥10x" at 24h is **6 events, all ANSEM** — one pump episode, effective n≈1. Directional,
+  not a rate with a usable CI.
+
+So: the on-chain thesis is **plausible and worth building for**, not proven. What IS established — the
+data reproduces, the tail is large and real among survivors, and the convex lens is the correct frame —
+makes this a solid **spec for the live funder-wallet snipe feature**, whose whole job is to measure the
+two things this study could not: precedence and survival.
 
 For contrast, the mean-reverting lens the original audit applied called this "not significant"
 (perm-p 0.0045 at 24h, failed after Bonferroni; ex-ANSEM below baseline). Both statements are true and
@@ -46,12 +58,12 @@ mean.
 - **No entry-timing test.** This measures alert→forward-price, not "could a bot have entered in time."
   The live sniper feature must test signal precedence (funder-wallet action strictly before entry).
 
-## Honest conclusion
-Under the correct convex lens, whale-accumulation on young tokens shows a **large, positive, tail-driven
-edge among tokens that survive** — strong validation of the on-chain thesis and a green light to build
-the live funder-wallet snipe feature. It is **not yet a sizeable-capital signal**: that needs the rug
-rate (survival) measured, which the current data cannot provide. Merge as a validated research artifact
-and a specification for the live feature; do not size real capital off it until survival is quantified.
+## Conclusion
+Merge as a **reproducible research artifact and the specification for the live funder-wallet snipe
+feature** — NOT as a validated signal. The convex upside among survivors is real and the frame is
+correct, but the thesis stays UNTESTED until precedence and rug/survival are measured. Do not size any
+capital off it. The next deliverable is the live feature that measures precedence and survival on new
+pairs as they launch — that is where the edge is actually proven or refuted.
 
 ## Reproducibility
 `WHALE_DATA_DIR=research/data/source PYTHONPATH=… python3 scripts/whale_accumulation_study.py`.

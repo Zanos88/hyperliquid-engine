@@ -226,11 +226,11 @@
     }
   },
   "dexscreener": {
-    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
-      "price_usd": "0.001349",
-      "change_24h": 10.6,
-      "liquidity_usd": 318872.11,
-      "fdv": 1346318
+    "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2": {
+      "price_usd": "0.04379",
+      "change_24h": -3.71,
+      "liquidity_usd": 2506145.67,
+      "fdv": 43740054
     },
     "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump": {
       "price_usd": "0.1919",
@@ -238,17 +238,17 @@
       "liquidity_usd": 1997818.55,
       "fdv": 191900947
     },
+    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
+      "price_usd": "0.001349",
+      "change_24h": 10.6,
+      "liquidity_usd": 318872.11,
+      "fdv": 1346318
+    },
     "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump": {
       "price_usd": "0.01880",
       "change_24h": 0.63,
       "liquidity_usd": 1125568.96,
       "fdv": 18800164
-    },
-    "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2": {
-      "price_usd": "0.04379",
-      "change_24h": -3.71,
-      "liquidity_usd": 2506145.67,
-      "fdv": 43740054
     }
   }
 }
