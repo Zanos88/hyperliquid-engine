@@ -1,10 +1,12 @@
 {
-  "timestamp_utc": "2026-07-20T05:17:19.779883+00:00",
+  "signal_asof_utc": "2026-07-08T23:59:59+00:00",
+  "data_fetched_at_utc": "2026-07-09T11:41:24+00:00",
   "btc_price": 62283.0,
   "volatility_pct": 1.93,
   "signal": "BULL",
   "lookback": 14,
-  "leverage": 2.0,
+  "leverage_target": 2.0,
+  "leverage_actual": 0.86,
   "comp_target_pct": 10.0,
   "daily_loss_limit_pct": 5.0,
   "position": {

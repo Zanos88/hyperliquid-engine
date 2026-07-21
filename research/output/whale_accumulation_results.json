@@ -1,0 +1,512 @@
+{
+  "metadata": {
+    "study": "Whale Accumulation \u2192 Forward Return",
+    "strategy_class": "onchain-convex",
+    "preregistered": "2026-07-20",
+    "source_whale": "research/data/source/whale_alerts.json",
+    "source_tokens": "research/data/source/discovered_tokens.json",
+    "whale_tokens": 4,
+    "discovered_tokens": 1000,
+    "token_overlap": 0,
+    "n_permutations": 10000,
+    "baseline_multiplier": 20,
+    "horizons_tested": [
+      "1h",
+      "6h",
+      "24h"
+    ]
+  },
+  "caveats": [
+    "whale_alerts capped at 1000 rows (PostgREST server-side limit); recent-window sample.",
+    "filter_rejections table EMPTY \u2014 all tokens passed bot filter; survivorship bias.",
+    "DexScreener gives current/recent pair data, not historical OHLCV. Forward returns measured from alert-to-alert prices (irregular sampling).",
+    "Only 4 unique tokens; results heavily token-idiosyncratic (ANSEM drives most signal).",
+    "Rug rate is UNMEASURABLE here (all 4 tokens survived; dead tokens absent from source) \u2014 reported convex EV is EV|survived, an upper bound, not realised EV.",
+    "Adverse selection IS measured (convex_risk.adverse_selection): tracked wallets frequently post EXIT alerts inside the held window \u2014 the accumulation signal overlaps distribution.",
+    "Precedence is an in-sample price proxy only; true tx-level precedence (wallet action strictly before entry) needs on-chain timestamps not in this dataset."
+  ],
+  "results": {
+    "1h": {
+      "status": "complete",
+      "n_raw": 205,
+      "n_deduped": 96,
+      "n_baseline": 4020,
+      "signal_mean": 0.08330948332995203,
+      "baseline_mean": 0.07068205822618964,
+      "signal_std": 0.4514407190976368,
+      "baseline_std": 0.3362559835869834,
+      "mean_diff": 0.012627425103762385,
+      "ci_95": [
+        -0.07827579760223673,
+        0.1035306478097615
+      ],
+      "cohens_d": 0.03720984725674392,
+      "welch_t": 0.27226485999754246,
+      "welch_df": 97.53358512672199,
+      "welch_p": 0.7859939198365976,
+      "perm_p": 0.31886811318868113,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": false,
+      "signal_win_rate": 0.5833333333333334,
+      "baseline_win_rate": 0.6781094527363184,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": -0.004445211969663114,
+          "win": 0.3333333333333333
+        },
+        "ALON": {
+          "n": 36,
+          "mean": -0.0024942447160945453,
+          "win": 0.5
+        },
+        "ANSEM": {
+          "n": 54,
+          "mean": 0.14748053088764412,
+          "win": 0.6296296296296297
+        },
+        "NEET": {
+          "n": 3,
+          "mean": 0.04563005914366899,
+          "win": 1.0
+        }
+      },
+      "convex": {
+        "n_events": 96,
+        "ev_per_bet": 0.08330948332995203,
+        "median": 0.018715807659084316,
+        "p10": -0.10396039603960394,
+        "p90": 0.24232081911262804,
+        "p99": 0.762406015037594,
+        "max_multiple": 5.125246548323472,
+        "share_2x": 0.010416666666666666,
+        "share_5x": 0.010416666666666666,
+        "share_10x": 0.0,
+        "share_100x": 0.0,
+        "loss_rate": 0.4166666666666667,
+        "rug_rate": 0.0,
+        "rug_rate_note": "rug_rate here is measured WITHIN the survivor sample (returns <= -90% on the alert-to-alert price series). It is NOT a live sprayer's rug rate: DexScreener/source carry no dead-token price series, so tokens that went to ~0 are absent. Treat 0.0 as SURVIVORSHIP, not a measured zero. Realised EV = P(survive)*E[ret|survive] - P(rug), and P(rug) is unmeasurable from this dataset (all 4 tokens survived).",
+        "tail_capture_note": "EV per bet +8.3% with median +1.9% \u2014 most entries lose, the top outcome is 5.1x. In a convex book the tail IS the return; do not strip it."
+      },
+      "convex_risk": {
+        "n_events": 96,
+        "n_tokens": 4,
+        "hit_rate_ci": {
+          "2x": {
+            "events": 1,
+            "event_rate": 0.010416666666666666,
+            "event_ci95": [
+              0.0018411228184366352,
+              0.05666755492711232
+            ],
+            "tokens_hit": 1,
+            "n_tokens": 4,
+            "episode_rate": 0.25,
+            "episode_ci95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "5x": {
+            "events": 1,
+            "event_rate": 0.010416666666666666,
+            "event_ci95": [
+              0.0018411228184366352,
+              0.05666755492711232
+            ],
+            "tokens_hit": 1,
+            "n_tokens": 4,
+            "episode_rate": 0.25,
+            "episode_ci95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "10x": {
+            "events": 0,
+            "event_rate": 0.0,
+            "event_ci95": [
+              0.0,
+              0.03847694748481595
+            ],
+            "tokens_hit": 0,
+            "n_tokens": 4,
+            "episode_rate": 0.0,
+            "episode_ci95": [
+              0.0,
+              0.48990002040399916
+            ]
+          },
+          "100x": {
+            "events": 0,
+            "event_rate": 0.0,
+            "event_ci95": [
+              0.0,
+              0.03847694748481595
+            ],
+            "tokens_hit": 0,
+            "n_tokens": 4,
+            "episode_rate": 0.0,
+            "episode_ci95": [
+              0.0,
+              0.48990002040399916
+            ]
+          }
+        },
+        "precedence": {
+          "move_after_entry": 10,
+          "rate": 0.10416666666666667,
+          "note": "Share of events where a higher price is seen AFTER entry within the window (move develops post-signal). IN-SAMPLE PROXY ONLY \u2014 the source has no on-chain tx timestamps, so true tracked-wallet-action-before-entry precedence is untested and remains the job of the live funder-wallet feature."
+        },
+        "adverse_selection": {
+          "any_wallet_exit": 47,
+          "any_wallet_rate": 0.4895833333333333,
+          "same_wallet_exit": 2,
+          "same_wallet_rate": 0.020833333333333332,
+          "note": "Share of held windows in which a tracked wallet posts an EXIT alert (sells). 'same_wallet' = the wallet whose accumulation we followed sells into our window \u2014 we are its exit liquidity. High values mean the accumulation signal and the distribution overlap in time."
+        },
+        "ruin": {
+          "loss_rate": 0.4166666666666667,
+          "worst_losing_streak": 4,
+          "equal_weight_book_multiple": 1.0833094833299517,
+          "note": "Equal-weight spray, bounded -100%/bet. Book multiple is SURVIVOR-ONLY (excludes rugged tokens absent from the source), so it is an upper bound; fund the worst losing streak with the full spray budget upfront."
+        }
+      },
+      "pseudoreplication_note": "Raw perm-p significant but 4 tokens (96 events) with 99.6% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (96).",
+      "dominant_token": "ANSEM",
+      "dominant_token_return_share": 0.9958,
+      "effective_token_count": 4,
+      "n_cluster_adjusted_perm_p": "N/A (n_clusters < 5)"
+    },
+    "6h": {
+      "status": "complete",
+      "n_raw": 204,
+      "n_deduped": 95,
+      "n_baseline": 3992,
+      "signal_mean": 0.34666829740554084,
+      "baseline_mean": 0.12247186699182579,
+      "signal_std": 1.2308202695075743,
+      "baseline_std": 0.6343731990363726,
+      "mean_diff": 0.22419643041371506,
+      "ci_95": [
+        -0.024092481894832263,
+        0.4724853427222624
+      ],
+      "cohens_d": 0.34268268924756085,
+      "welch_t": 1.7698132370277186,
+      "welch_df": 95.19214540443096,
+      "welch_p": 0.07996027253888652,
+      "perm_p": 0.0057994200579942,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": false,
+      "signal_win_rate": 0.6,
+      "baseline_win_rate": 0.5253006012024048,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": 0.021779516872861986,
+          "win": 0.6666666666666666
+        },
+        "ALON": {
+          "n": 36,
+          "mean": 0.032995161278028394,
+          "win": 0.4166666666666667
+        },
+        "ANSEM": {
+          "n": 53,
+          "mean": 0.5936405597772063,
+          "win": 0.6981132075471698
+        },
+        "NEET": {
+          "n": 3,
+          "mean": 0.07245807623561484,
+          "win": 1.0
+        }
+      },
+      "convex": {
+        "n_events": 95,
+        "ev_per_bet": 0.34666829740554084,
+        "median": 0.06622023809523814,
+        "p10": -0.17071197411003225,
+        "p90": 0.768135462766981,
+        "p99": 6.913811481650678,
+        "max_multiple": 8.97892190739461,
+        "share_2x": 0.06315789473684211,
+        "share_5x": 0.031578947368421054,
+        "share_10x": 0.0,
+        "share_100x": 0.0,
+        "loss_rate": 0.4,
+        "rug_rate": 0.0,
+        "rug_rate_note": "rug_rate here is measured WITHIN the survivor sample (returns <= -90% on the alert-to-alert price series). It is NOT a live sprayer's rug rate: DexScreener/source carry no dead-token price series, so tokens that went to ~0 are absent. Treat 0.0 as SURVIVORSHIP, not a measured zero. Realised EV = P(survive)*E[ret|survive] - P(rug), and P(rug) is unmeasurable from this dataset (all 4 tokens survived).",
+        "tail_capture_note": "EV per bet +34.7% with median +6.6% \u2014 most entries lose, the top outcome is 9.0x. In a convex book the tail IS the return; do not strip it."
+      },
+      "convex_risk": {
+        "n_events": 95,
+        "n_tokens": 4,
+        "hit_rate_ci": {
+          "2x": {
+            "events": 6,
+            "event_rate": 0.06315789473684211,
+            "event_ci95": [
+              0.02926448953808083,
+              0.13100810823451697
+            ],
+            "tokens_hit": 2,
+            "n_tokens": 4,
+            "episode_rate": 0.5,
+            "episode_ci95": [
+              0.15003570882017145,
+              0.8499642911798285
+            ]
+          },
+          "5x": {
+            "events": 3,
+            "event_rate": 0.031578947368421054,
+            "event_ci95": [
+              0.010796943829702529,
+              0.08877246823970955
+            ],
+            "tokens_hit": 1,
+            "n_tokens": 4,
+            "episode_rate": 0.25,
+            "episode_ci95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "10x": {
+            "events": 0,
+            "event_rate": 0.0,
+            "event_ci95": [
+              0.0,
+              0.038866226366226365
+            ],
+            "tokens_hit": 0,
+            "n_tokens": 4,
+            "episode_rate": 0.0,
+            "episode_ci95": [
+              0.0,
+              0.48990002040399916
+            ]
+          },
+          "100x": {
+            "events": 0,
+            "event_rate": 0.0,
+            "event_ci95": [
+              0.0,
+              0.038866226366226365
+            ],
+            "tokens_hit": 0,
+            "n_tokens": 4,
+            "episode_rate": 0.0,
+            "episode_ci95": [
+              0.0,
+              0.48990002040399916
+            ]
+          }
+        },
+        "precedence": {
+          "move_after_entry": 56,
+          "rate": 0.5894736842105263,
+          "note": "Share of events where a higher price is seen AFTER entry within the window (move develops post-signal). IN-SAMPLE PROXY ONLY \u2014 the source has no on-chain tx timestamps, so true tracked-wallet-action-before-entry precedence is untested and remains the job of the live funder-wallet feature."
+        },
+        "adverse_selection": {
+          "any_wallet_exit": 59,
+          "any_wallet_rate": 0.6210526315789474,
+          "same_wallet_exit": 10,
+          "same_wallet_rate": 0.10526315789473684,
+          "note": "Share of held windows in which a tracked wallet posts an EXIT alert (sells). 'same_wallet' = the wallet whose accumulation we followed sells into our window \u2014 we are its exit liquidity. High values mean the accumulation signal and the distribution overlap in time."
+        },
+        "ruin": {
+          "loss_rate": 0.4,
+          "worst_losing_streak": 8,
+          "equal_weight_book_multiple": 1.3466682974055404,
+          "note": "Equal-weight spray, bounded -100%/bet. Book multiple is SURVIVOR-ONLY (excludes rugged tokens absent from the source), so it is an upper bound; fund the worst losing streak with the full spray budget upfront."
+        }
+      },
+      "pseudoreplication_note": "Raw perm-p significant but 4 tokens (95 events) with 95.5% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (95).",
+      "dominant_token": "ANSEM",
+      "dominant_token_return_share": 0.9553,
+      "effective_token_count": 4,
+      "n_cluster_adjusted_perm_p": "N/A (n_clusters < 5)"
+    },
+    "24h": {
+      "status": "complete",
+      "n_raw": 192,
+      "n_deduped": 89,
+      "n_baseline": 3354,
+      "signal_mean": 1.166314733823377,
+      "baseline_mean": 0.4690199587852102,
+      "signal_std": 3.6053348610681244,
+      "baseline_std": 1.9111775508764806,
+      "mean_diff": 0.6972947750381668,
+      "ci_95": [
+        -0.054535548048485594,
+        1.4491250981248194
+      ],
+      "cohens_d": 0.3534693556297113,
+      "welch_t": 1.8178273968304517,
+      "welch_df": 89.31711487909419,
+      "welch_p": 0.07244316870572305,
+      "perm_p": 0.0044995500449955,
+      "bonf_alpha": 0.016666666666666666,
+      "significant": false,
+      "signal_win_rate": 0.7191011235955056,
+      "baseline_win_rate": 0.7096004770423375,
+      "token_breakdown": {
+        "TROLL": {
+          "n": 3,
+          "mean": 0.0065124590700572265,
+          "win": 0.6666666666666666
+        },
+        "ALON": {
+          "n": 34,
+          "mean": 0.0016966394416859426,
+          "win": 0.47058823529411764
+        },
+        "ANSEM": {
+          "n": 50,
+          "mean": 2.072859481048709,
+          "win": 0.9
+        },
+        "NEET": {
+          "n": 2,
+          "mean": 0.040907069808803986,
+          "win": 0.5
+        }
+      },
+      "convex": {
+        "n_events": 89,
+        "ev_per_bet": 1.166314733823377,
+        "median": 0.15277777777777768,
+        "p10": -0.3733960650128314,
+        "p90": 0.9881422924901186,
+        "p99": 17.0,
+        "max_multiple": 18.349199480744264,
+        "share_2x": 0.10112359550561797,
+        "share_5x": 0.07865168539325842,
+        "share_10x": 0.06741573033707865,
+        "share_100x": 0.0,
+        "loss_rate": 0.2808988764044944,
+        "rug_rate": 0.0,
+        "rug_rate_note": "rug_rate here is measured WITHIN the survivor sample (returns <= -90% on the alert-to-alert price series). It is NOT a live sprayer's rug rate: DexScreener/source carry no dead-token price series, so tokens that went to ~0 are absent. Treat 0.0 as SURVIVORSHIP, not a measured zero. Realised EV = P(survive)*E[ret|survive] - P(rug), and P(rug) is unmeasurable from this dataset (all 4 tokens survived).",
+        "tail_capture_note": "EV per bet +116.6% with median +15.3% \u2014 most entries lose, the top outcome is 18.3x. In a convex book the tail IS the return; do not strip it."
+      },
+      "convex_risk": {
+        "n_events": 89,
+        "n_tokens": 4,
+        "hit_rate_ci": {
+          "2x": {
+            "events": 9,
+            "event_rate": 0.10112359550561797,
+            "event_ci95": [
+              0.05411793406379983,
+              0.1811386750424629
+            ],
+            "tokens_hit": 2,
+            "n_tokens": 4,
+            "episode_rate": 0.5,
+            "episode_ci95": [
+              0.15003570882017145,
+              0.8499642911798285
+            ]
+          },
+          "5x": {
+            "events": 7,
+            "event_rate": 0.07865168539325842,
+            "event_ci95": [
+              0.0386193309317579,
+              0.15355314347626609
+            ],
+            "tokens_hit": 1,
+            "n_tokens": 4,
+            "episode_rate": 0.25,
+            "episode_ci95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "10x": {
+            "events": 6,
+            "event_rate": 0.06741573033707865,
+            "event_ci95": [
+              0.03126095907688764,
+              0.139369447982017
+            ],
+            "tokens_hit": 1,
+            "n_tokens": 4,
+            "episode_rate": 0.25,
+            "episode_ci95": [
+              0.045586062644636216,
+              0.6993639475573634
+            ]
+          },
+          "100x": {
+            "events": 0,
+            "event_rate": 0.0,
+            "event_ci95": [
+              0.0,
+              0.04137800296418846
+            ],
+            "tokens_hit": 0,
+            "n_tokens": 4,
+            "episode_rate": 0.0,
+            "episode_ci95": [
+              0.0,
+              0.48990002040399916
+            ]
+          }
+        },
+        "precedence": {
+          "move_after_entry": 68,
+          "rate": 0.7640449438202247,
+          "note": "Share of events where a higher price is seen AFTER entry within the window (move develops post-signal). IN-SAMPLE PROXY ONLY \u2014 the source has no on-chain tx timestamps, so true tracked-wallet-action-before-entry precedence is untested and remains the job of the live funder-wallet feature."
+        },
+        "adverse_selection": {
+          "any_wallet_exit": 77,
+          "any_wallet_rate": 0.8651685393258427,
+          "same_wallet_exit": 11,
+          "same_wallet_rate": 0.12359550561797752,
+          "note": "Share of held windows in which a tracked wallet posts an EXIT alert (sells). 'same_wallet' = the wallet whose accumulation we followed sells into our window \u2014 we are its exit liquidity. High values mean the accumulation signal and the distribution overlap in time."
+        },
+        "ruin": {
+          "loss_rate": 0.2808988764044944,
+          "worst_losing_streak": 4,
+          "equal_weight_book_multiple": 2.1663147338233775,
+          "note": "Equal-weight spray, bounded -100%/bet. Book multiple is SURVIVOR-ONLY (excludes rugged tokens absent from the source), so it is an upper bound; fund the worst losing streak with the full spray budget upfront."
+        }
+      },
+      "pseudoreplication_note": "Raw perm-p significant but 4 tokens (89 events) with 99.8% of total return from ANSEM alone. Overlapping forward windows on same token treated as independent. Effective independent units ~= number of tokens (4), not events (89).",
+      "dominant_token": "ANSEM",
+      "dominant_token_return_share": 0.9985,
+      "effective_token_count": 4,
+      "n_cluster_adjusted_perm_p": "N/A (n_clusters < 5)"
+    }
+  },
+  "dexscreener": {
+    "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump": {
+      "price_usd": "0.1919",
+      "change_24h": -0.92,
+      "liquidity_usd": 1997818.55,
+      "fdv": 191900947
+    },
+    "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump": {
+      "price_usd": "0.01880",
+      "change_24h": 0.63,
+      "liquidity_usd": 1125568.96,
+      "fdv": 18800164
+    },
+    "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2": {
+      "price_usd": "0.04379",
+      "change_24h": -3.71,
+      "liquidity_usd": 2506145.67,
+      "fdv": 43740054
+    },
+    "8XtRWb4uAAJFMP4QQhoYYCWR6XXb7ybcCdiqPwz9s5WS": {
+      "price_usd": "0.001349",
+      "change_24h": 10.6,
+      "liquidity_usd": 318872.11,
+      "fdv": 1346318
+    }
+  }
+}
