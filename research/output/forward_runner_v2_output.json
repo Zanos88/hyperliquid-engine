@@ -1,0 +1,29 @@
+{
+  "signal_asof_utc": "2026-07-08T23:59:59+00:00",
+  "data_fetched_at_utc": "2026-07-09T11:41:24+00:00",
+  "btc_price": 62283.0,
+  "volatility_pct": 1.93,
+  "signal": "BULL",
+  "lookback": 14,
+  "leverage_target": 2.0,
+  "leverage_actual": 0.86,
+  "comp_target_pct": 10.0,
+  "daily_loss_limit_pct": 5.0,
+  "position": {
+    "action": "ENTER_LONG",
+    "size": 0.86,
+    "leverage": 0.86,
+    "notional_usd": 86135.35,
+    "qty_btc": 1.382967,
+    "entry_price": 62283.0,
+    "stop_price": 60414.51,
+    "daily_loss_room": 5000.0,
+    "rationale": "TSMOM14 signal=LONG, kelly=1.00, lev=0.9x"
+  },
+  "account": {
+    "equity": 100000,
+    "daily_pnl": 0.0,
+    "daily_loss_limit": 5000.0,
+    "target_win": 10000.0
+  }
+}

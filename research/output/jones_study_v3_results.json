@@ -1,0 +1,154 @@
+{
+  "TSMOM30_base_full_gross": {
+    "label": "TSMOM30_base_gross",
+    "sharpe": 0.865,
+    "dsr_prob": 0.9822,
+    "ann_ret_pct": 49.75,
+    "vol_pct": 57.51,
+    "max_dd_pct": -56.45,
+    "net_mult": 7.059
+  },
+  "TSMOM30_base_full_net": {
+    "label": "TSMOM30_base_net",
+    "sharpe": 0.824,
+    "dsr_prob": 0.9773,
+    "ann_ret_pct": 47.41,
+    "vol_pct": 57.51,
+    "max_dd_pct": -56.66,
+    "net_mult": 6.15,
+    "n_trades": 184
+  },
+  "TSMOM30_conviction_causal_full_gross": {
+    "label": "TSMOM30_conviction_causal_gross",
+    "sharpe": 0.943,
+    "dsr_prob": 0.9891,
+    "ann_ret_pct": 43.42,
+    "vol_pct": 46.06,
+    "max_dd_pct": -41.68,
+    "net_mult": 6.888
+  },
+  "TSMOM30_conviction_causal_full_net": {
+    "label": "TSMOM30_conviction_causal_net",
+    "sharpe": 0.45,
+    "dsr_prob": 0.8628,
+    "ann_ret_pct": 20.74,
+    "vol_pct": 46.06,
+    "max_dd_pct": -56.63,
+    "net_mult": 1.813,
+    "n_trades": 1780
+  },
+  "BuyHold_full_gross": {
+    "label": "BuyHold_gross",
+    "sharpe": 0.778,
+    "dsr_prob": 0.9705,
+    "ann_ret_pct": 45.03,
+    "vol_pct": 57.85,
+    "max_dd_pct": -76.67,
+    "net_mult": 5.294
+  },
+  "BuyHold_full_net": {
+    "label": "BuyHold_net",
+    "sharpe": 0.778,
+    "dsr_prob": 0.9705,
+    "ann_ret_pct": 45.02,
+    "vol_pct": 57.85,
+    "max_dd_pct": -76.67,
+    "net_mult": 5.29,
+    "n_trades": 1
+  },
+  "TSMOM30_base_foldfold0": {
+    "sharpe": 2.29,
+    "dsr_prob": 0.9843,
+    "ann_ret_pct": 151.16,
+    "max_dd_pct": -23.5,
+    "net_mult": 3.224,
+    "n_trades": 30,
+    "val_bars": 330
+  },
+  "TSMOM30_base_foldfold1": {
+    "sharpe": 3.37,
+    "dsr_prob": 0.9991,
+    "ann_ret_pct": 140.73,
+    "max_dd_pct": -13.32,
+    "net_mult": 3.296,
+    "n_trades": 25,
+    "val_bars": 330
+  },
+  "TSMOM30_base_foldfold2": {
+    "sharpe": 3.08,
+    "dsr_prob": 0.9981,
+    "ann_ret_pct": 163.22,
+    "max_dd_pct": -21.52,
+    "net_mult": 3.848,
+    "n_trades": 32,
+    "val_bars": 330
+  },
+  "TSMOM30_base_foldfold3": {
+    "sharpe": 3.536,
+    "dsr_prob": 0.9996,
+    "ann_ret_pct": 157.02,
+    "max_dd_pct": -14.73,
+    "net_mult": 3.776,
+    "n_trades": 30,
+    "val_bars": 330
+  },
+  "TSMOM30_base_foldfold4": {
+    "sharpe": 3.129,
+    "dsr_prob": 0.9988,
+    "ann_ret_pct": 136.91,
+    "max_dd_pct": -17.01,
+    "net_mult": 3.157,
+    "n_trades": 39,
+    "val_bars": 330
+  },
+  "TSMOM30_conviction_causal_foldfold0": {
+    "sharpe": 2.185,
+    "dsr_prob": 0.9788,
+    "ann_ret_pct": 101.45,
+    "max_dd_pct": -14.72,
+    "net_mult": 2.272,
+    "n_trades": 327,
+    "val_bars": 330
+  },
+  "TSMOM30_conviction_causal_foldfold1": {
+    "sharpe": 2.781,
+    "dsr_prob": 0.9949,
+    "ann_ret_pct": 83.44,
+    "max_dd_pct": -8.94,
+    "net_mult": 2.041,
+    "n_trades": 303,
+    "val_bars": 330
+  },
+  "TSMOM30_conviction_causal_foldfold2": {
+    "sharpe": 2.887,
+    "dsr_prob": 0.9965,
+    "ann_ret_pct": 116.21,
+    "max_dd_pct": -16.73,
+    "net_mult": 2.657,
+    "n_trades": 306,
+    "val_bars": 330
+  },
+  "TSMOM30_conviction_causal_foldfold3": {
+    "sharpe": 2.822,
+    "dsr_prob": 0.9959,
+    "ann_ret_pct": 92.31,
+    "max_dd_pct": -12.32,
+    "net_mult": 2.194,
+    "n_trades": 312,
+    "val_bars": 330
+  },
+  "TSMOM30_conviction_causal_foldfold4": {
+    "sharpe": 2.398,
+    "dsr_prob": 0.9899,
+    "ann_ret_pct": 86.27,
+    "max_dd_pct": -15.44,
+    "net_mult": 2.056,
+    "n_trades": 306,
+    "val_bars": 330
+  },
+  "_deflated_sharpe": {
+    "n_trials": 12,
+    "best_sharpe": 3.536,
+    "dsr_prob": 0.6062
+  }
+}
