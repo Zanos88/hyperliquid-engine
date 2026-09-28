@@ -139,9 +139,10 @@ and the `feature_flags` execution switch. **Note:** the running engine
 reads active timeframes, indicator toggles, live risk params, and signal
 geometry from Postgres (`strategy_settings`, `indicator_config`,
 `risk_params` — set via the Telegram `/settings` menu), *not* from
-`config.yaml`; in the `data:` block only the commented `timeframes` /
-`strategy_mode` lines are DB-backed and unread — `data.coin` IS read by
-the engine (it is the polled symbol, `main.py`). Likewise `risk.risk_pct`,
+`config.yaml`; in the `data:` block the timeframes and `strategy_mode`
+documentation (a prose comment plus the commented `strategy_mode` line) is
+DB-backed and unread — `data.coin` IS read by the engine (it is the polled
+symbol, `main.py`). Likewise `risk.risk_pct`,
 `strategy.fisher_period`, `strategy.obv_sma_period`, and
 `strategy.min_reward_risk` are **documentation of the code's defaults, not
 live inputs** — the effective `risk_pct` comes from the DB `risk_params`,
@@ -167,7 +168,7 @@ be casually widened).
 python -m pytest -q
 ```
 
-The suite is **262 tests across 32 files** (251 passing, 11 skipped in a
+The suite is **265 tests across 33 files** (254 passing, 11 skipped in a
 default environment) covering the strategy, risk, ledger, alerts,
 execution-client and data layers against synthetic data (no live API
 calls). The 11 skips are the DB-backed suites that need

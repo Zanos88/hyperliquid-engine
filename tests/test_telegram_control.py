@@ -302,6 +302,27 @@ def test_frame_b_markup_shape():
     assert all(len(cb.encode()) <= 64 for cb in all_callbacks)   # Telegram callback_data limit
 
 
+def test_dashboard_logs_when_market_state_read_fails(caplog):
+    # The repo convention is "never a silent except" — a swallowed DB read
+    # must still be logged. cmd_dashboard degrades gracefully (Market
+    # section omitted) but MUST emit a warning, not swallow silently.
+    services, store, execution = make_services()
+
+    def _boom():
+        raise RuntimeError("db down")
+    store.get_market_state = _boom
+
+    upd = FakeUpdate(ADMIN_ID)
+    with caplog.at_level("WARNING", logger="telegram_control.handlers"):
+        run(handlers.cmd_dashboard(upd, FakeContext(), services))
+
+    # dashboard still renders (graceful) ...
+    assert "DASHBOARD" in upd.output()
+    assert "\U0001F4CA <b>Market</b>" not in upd.output()   # section omitted
+    # ... and the failure was logged, not swallowed.
+    assert any("market-state read failed" in r.message for r in caplog.records)
+
+
 def test_dashboard_attaches_frame_b_only_with_positions():
     # with a position -> Frame B keyboard attached
     services, _, execution = make_services()
