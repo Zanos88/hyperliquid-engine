@@ -158,6 +158,7 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
         try:
             tel = getter()
         except Exception:
+            logger.warning("dashboard: latest-telemetry read failed — falling back to account snapshot", exc_info=True)
             tel = None
     if tel:
         equity, day_start = tel["equity"], tel["day_start_equity"]
@@ -181,6 +182,7 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
         s = services.store.get_strategy_settings()
         mode_line = f"Mode: {s['mode']} | TF: {s['active_bias_tf']} bias / {s['active_trigger_tf']} trigger"
     except Exception:
+        logger.warning("dashboard: strategy-settings read failed", exc_info=True)
         mode_line = "Mode: (settings unavailable)"
     ind_line = _indicator_summary_safe(services.store)
 
@@ -188,7 +190,7 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
     try:
         ms = services.store.get_market_state()
     except Exception:
-        pass
+        logger.warning("dashboard: market-state read failed — Market section omitted", exc_info=True)
 
     cb_line = ("\U0001F6D1 HALTED (-2.5% daily buffer hit)" if cb_halted
                else "armed at -2.5% daily" if cb_halted is not None else "state unavailable")
@@ -228,6 +230,7 @@ async def cmd_dashboard(update, context, services: ControlServices) -> None:
     try:
         positions = services.execution.get_open_positions()
     except Exception:
+        logger.warning("dashboard: live open-positions lookup failed", exc_info=True)
         positions = []
     for p in positions:
         lines.append(
@@ -334,6 +337,7 @@ def _indicator_summary_safe(store) -> str | None:
     try:
         return indicator_summary(getter())
     except Exception:
+        logger.warning("indicator-config read failed — indicator summary omitted", exc_info=True)
         return None
 
 

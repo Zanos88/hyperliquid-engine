@@ -8,7 +8,9 @@ risk:
   # NOTE: risk_pct here is a documented seed only — the engine reads the
   # LIVE risk_pct from Postgres (risk_params, set via /risk). Editing this
   # value alone changes nothing at runtime. btc_sz_decimals IS read.
-  risk_pct: 0.0075        # 0.75% per trade, within spec's 0.5-1.0% band (seed; DB-authoritative)
+  risk_pct: 0.0075        # 0.75% per trade (seed; DB-authoritative). Enforced band is
+                          # 0.25-1.0% (MIN/MAX_RISK_PCT in risk/sizing.py, V2-widened from
+                          # the build spec's original 0.5-1.0%).
   btc_sz_decimals: 5      # BTC-PERP quantity step on Hyperliquid; prefer live meta lookup
   circuit_breaker_halt_pct: -0.025  # -2.5%, DO NOT WIDEN. Documentation only — the real value is
                                     # the hard-coded HALT_THRESHOLD_PCT in risk/circuit_breaker.py.

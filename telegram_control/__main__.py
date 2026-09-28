@@ -53,6 +53,7 @@ def build_account_snapshot(store, execution):
             try:
                 peak = max(store.get_hwm(), equity)  # persisted HWM, restart-safe
             except Exception:
+                logger.warning("HWM read failed — falling back to current equity as peak", exc_info=True)
                 peak = equity
             return {"equity": equity, "peak_equity": peak,
                     "day_start_equity": day_start, "open_positions_count": 0}
