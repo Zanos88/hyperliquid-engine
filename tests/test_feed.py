@@ -19,6 +19,7 @@ from data.feed import (
     _parse_candle,
     fetch_candles,
     fetch_funding_history,
+    fetch_l2_book,
     get_btc_sz_decimals,
 )
 
@@ -111,3 +112,15 @@ def test_fetch_funding_history_single_short_page_stops_immediately():
     out = fetch_funding_history("BTC", 1000, 2000, session=session)
     assert out == [(1000, 0.0001)]
     assert len(session.bodies) == 1  # no second request on a short page
+
+
+def test_fetch_l2_book_builds_request_and_returns_snapshot():
+    # Pins the endpoint contract (type string + coin) so a request-shape
+    # drift is caught offline, and that the raw snapshot is returned as-is.
+    snapshot = {"coin": "BTC", "time": 123,
+                "levels": [[{"px": "1", "sz": "2", "n": 1}],
+                           [{"px": "3", "sz": "4", "n": 1}]]}
+    session = _FakeSession([snapshot])
+    out = fetch_l2_book("BTC", session=session)
+    assert out is snapshot
+    assert session.bodies[0] == {"type": "l2Book", "coin": "BTC"}
