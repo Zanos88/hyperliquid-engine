@@ -19,6 +19,7 @@ from data.feed import (
     _parse_candle,
     fetch_candles,
     fetch_funding_history,
+    fetch_l2_book,
     get_btc_sz_decimals,
 )
 
@@ -111,3 +112,31 @@ def test_fetch_funding_history_single_short_page_stops_immediately():
     out = fetch_funding_history("BTC", 1000, 2000, session=session)
     assert out == [(1000, 0.0001)]
     assert len(session.bodies) == 1  # no second request on a short page
+
+
+def test_fetch_funding_history_empty_page_stops_and_returns_empty():
+    # An empty first page must break the loop immediately (no infinite
+    # re-request on a start window with no funding rows yet).
+    session = _FakeSession([[]])
+    out = fetch_funding_history("BTC", 1000, 2000, session=session)
+    assert out == []
+    assert len(session.bodies) == 1
+
+
+def test_fetch_l2_book_builds_request_and_passes_through_payload():
+    # The L2 book is a live-only read; assert the request shape and that
+    # the raw snapshot is returned verbatim (callers depend on the
+    # {coin, time, levels:[bids, asks]} structure, 20 levels/side).
+    snapshot = {
+        "coin": "BTC",
+        "time": 1700000000000,
+        "levels": [
+            [{"px": "100.0", "sz": "1.0", "n": 2}],   # bids
+            [{"px": "101.0", "sz": "0.5", "n": 1}],   # asks
+        ],
+    }
+    session = _FakeSession([snapshot])
+    out = fetch_l2_book("BTC", session=session)
+    assert out is snapshot
+    body = session.bodies[0]
+    assert body == {"type": "l2Book", "coin": "BTC"}
